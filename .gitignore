@@ -51,4 +51,7 @@ app.*.map.json
 
 # Image-generation intermediates; only the final launcher asset is versioned.
 /assets/icon/mind_bubble_source.png
+
+# Generated from the ARB localization sources by Flutter gen-l10n.
+/lib/l10n/app_localizations*.dart
 /dist/
