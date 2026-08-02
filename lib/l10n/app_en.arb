@@ -1,0 +1,19 @@
+{
+  "@@locale": "en",
+  "appTitle": "Mind Bubble",
+  "manageBubbles": "Manage bubbles",
+  "todaySubtitle": "Let a few ideas resurface today.",
+  "settings": "Settings",
+  "launchAtStartup": "Launch at login",
+  "newBubble": "New concept",
+  "editBubble": "Edit concept",
+  "delete": "Delete",
+  "cancel": "Cancel",
+  "save": "Save",
+  "frequency": "Appearance frequency",
+  "frequency1": "Very rare",
+  "frequency2": "Rare",
+  "frequency3": "Balanced",
+  "frequency4": "Often",
+  "frequency5": "Frequent"
+}

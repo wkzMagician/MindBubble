@@ -1,0 +1,46 @@
+name: mind_bubble
+description: A calm desktop concept reminder application.
+publish_to: none
+version: 0.3.1+4
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  csv: ^6.0.0
+  excel: ^4.0.6
+  file_picker: ^10.3.3
+  flutter_markdown_plus: ^1.0.12
+  flutter_riverpod: ^2.6.1
+  intl: any
+  launch_at_startup: ^0.5.1
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  sqflite_common_ffi: ^2.3.4+4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/icon/
+
+flutter_launcher_icons:
+  image_path: assets/icon/mind_bubble.png
+  android: true
+  ios: false
+  windows:
+    generate: true
+  macos:
+    generate: true
+  linux:
+    generate: true

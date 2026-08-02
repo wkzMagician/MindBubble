@@ -1,0 +1,19 @@
+{
+  "@@locale": "zh",
+  "appTitle": "浮念",
+  "manageBubbles": "管理泡泡",
+  "todaySubtitle": "今天，让几颗想法重新浮现。",
+  "settings": "设置",
+  "launchAtStartup": "登录后自动运行",
+  "newBubble": "新建概念",
+  "editBubble": "编辑概念",
+  "delete": "删除",
+  "cancel": "取消",
+  "save": "保存",
+  "frequency": "出现频率",
+  "frequency1": "很少",
+  "frequency2": "较少",
+  "frequency3": "适中",
+  "frequency4": "较多",
+  "frequency5": "频繁"
+}
