@@ -83,6 +83,12 @@ python /path/to/your/project/tools/mind_bubble_mcp.py
 
 WebDAV 配置保存在应用支持目录的 `webdav_config.json` 中。按照产品设定，泡泡同步内容不进行额外端到端加密。
 
+保存配置时应用会立即连接并同步。之后会在应用启动、回到前台、本地泡泡发生变更（2 秒防抖）以及应用保持打开期间每 5 分钟自动同步。远端数据存放在 `MindBubble/devices/`，每台设备维护自己的快照，避免多设备同时上传时相互覆盖；删除记录会作为同步墓碑保留，防止离线设备让已删除泡泡重新出现。
+
+### TODO：OpenDAL
+
+当前 WebDAV 传输层仅基于 `package:http` 和 `xml` 实现应用所需的 MKCOL、PROPFIND、GET、PUT。待 Apache OpenDAL 的 Dart binding 稳定，或浮念需要同时支持 S3 等多个云存储后端时，重新评估迁移到 OpenDAL。
+
 ## 打包
 
 ```powershell

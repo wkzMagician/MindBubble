@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/bubble.dart';
+import '../../l10n/l10n.dart';
 import '../../services/scheduler_service.dart';
 import '../../repositories/bubble_repository.dart';
 import '../../viewmodels/bubble_view_models.dart';
@@ -46,7 +47,7 @@ class _OceanPageState extends ConsumerState<OceanPage>
       initialDate: _testDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2040),
-      helpText: '选择用于调度测试的日期',
+      helpText: context.l10n.chooseTestDate,
     );
     if (date == null) return;
     _testDate = DateTime(date.year, date.month, date.day, 12);
@@ -55,87 +56,96 @@ class _OceanPageState extends ConsumerState<OceanPage>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: AnimatedBuilder(
-                animation: _animation,
-                builder: (_, __) => OceanBackground(progress: _animation.value),
-              ),
-            ),
-            SafeArea(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 18, 18, 12),
-                    child: Row(
-                      children: [
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('浮念', style: TextStyle(fontSize: 25)),
-                              SizedBox(height: 4),
-                              Text('今天，让几颗想法重新浮现。'),
-                            ],
+    body: Stack(
+      children: [
+        Positioned.fill(
+          child: AnimatedBuilder(
+            animation: _animation,
+            builder: (_, __) => OceanBackground(progress: _animation.value),
+          ),
+        ),
+        SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 18, 18, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.l10n.appTitle,
+                            style: const TextStyle(fontSize: 25),
                           ),
-                        ),
-                        if (kDebugMode)
-                          IconButton(
-                            tooltip: '模拟日期',
-                            onPressed: _pickTestDate,
-                            icon: const Icon(Icons.bug_report_outlined),
-                          ),
-                        IconButton(
-                          tooltip: '管理泡泡',
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const BubbleListPage()),
-                          ),
-                          icon: const Icon(Icons.format_list_bulleted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_testDate != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '测试日期：${SchedulerService.dateKey(_testDate!)}',
-                        style: const TextStyle(color: Color(0xFF9AD6E7)),
+                          const SizedBox(height: 4),
+                          Text(context.l10n.todaySubtitle),
+                        ],
                       ),
                     ),
-                  Expanded(
-                    child: ref.watch(todayBubblesProvider).when(
-                          loading: () =>
-                              const Center(child: CircularProgressIndicator()),
-                          error: (error, _) =>
-                              Center(child: Text('无法生成今日浮现：$error')),
-                          data: (bubbles) => bubbles.isEmpty
-                              ? const Center(child: Text('先在“管理泡泡”里记录一个想法吧。'))
-                              : BubbleField(
-                                  bubbles: bubbles, onBubbleTap: _showBubble),
+                    if (kDebugMode)
+                      IconButton(
+                        tooltip: context.l10n.simulateDate,
+                        onPressed: _pickTestDate,
+                        icon: const Icon(Icons.bug_report_outlined),
+                      ),
+                    IconButton(
+                      tooltip: context.l10n.manageBubbles,
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const BubbleListPage(),
                         ),
-                  ),
-                ],
+                      ),
+                      icon: const Icon(Icons.format_list_bulleted),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              if (_testDate != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    context.l10n.testDate(SchedulerService.dateKey(_testDate!)),
+                    style: const TextStyle(color: Color(0xFF9AD6E7)),
+                  ),
+                ),
+              Expanded(
+                child: ref
+                    .watch(todayBubblesProvider)
+                    .when(
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (error, _) => Center(
+                        child: Text(context.l10n.scheduleError('$error')),
+                      ),
+                      data: (bubbles) => bubbles.isEmpty
+                          ? Center(child: Text(context.l10n.noBubblesYet))
+                          : BubbleField(
+                              bubbles: bubbles,
+                              onBubbleTap: _showBubble,
+                            ),
+                    ),
+              ),
+            ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   Future<void> _showBubble(Bubble bubble) => showDialog<void>(
-        context: context,
-        builder: (context) => BubbleDetailDialog(
-          bubble: bubble,
-          onFrequencyChanged: (frequency) => ref
-              .read(bubbleRepositoryProvider)
-              .updateFrequency(bubble.id, frequency),
-          onEdit: () => _editBubble(bubble),
-          onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
-        ),
-      );
+    context: context,
+    builder: (context) => BubbleDetailDialog(
+      bubble: bubble,
+      onFrequencyChanged: (frequency) => ref
+          .read(bubbleRepositoryProvider)
+          .updateFrequency(bubble.id, frequency),
+      onEdit: () => _editBubble(bubble),
+      onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
+    ),
+  );
 
   Future<void> _editBubble(Bubble bubble) async {
     final saved = await showDialog<bool>(

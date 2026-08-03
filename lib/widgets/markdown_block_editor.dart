@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../l10n/l10n.dart';
+
 class MarkdownBlockEditor extends StatefulWidget {
   const MarkdownBlockEditor({
     required this.controller,
@@ -68,133 +70,154 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFF0D2A36),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: widget.errorText == null
-                ? Colors.white.withValues(alpha: .1)
-                : Theme.of(context).colorScheme.error,
+    decoration: BoxDecoration(
+      color: const Color(0xFF0D2A36),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: widget.errorText == null
+            ? Colors.white.withValues(alpha: .1)
+            : Theme.of(context).colorScheme.error,
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildToolbar(),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+            itemCount: _blocks.length,
+            itemBuilder: (context, index) => index == _activeIndex
+                ? _buildActiveBlock()
+                : _buildRenderedBlock(index),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildToolbar(),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-                itemCount: _blocks.length,
-                itemBuilder: (context, index) => index == _activeIndex
-                    ? _buildActiveBlock()
-                    : _buildRenderedBlock(index),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 9, 16, 11),
-              decoration: const BoxDecoration(
-                color: Color(0xFF0A222D),
-                borderRadius:
-                    BorderRadius.vertical(bottom: Radius.circular(15)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.errorText ??
-                          'Enter 完成当前块 · Shift+Enter 块内换行 · 点击内容重新编辑',
-                      style: TextStyle(
-                        color: widget.errorText == null
-                            ? Colors.white.withValues(alpha: .5)
-                            : Theme.of(context).colorScheme.error,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '${_blocks.where((block) => block.raw.trim().isNotEmpty).length} 个内容块',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: .4),
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-
-  Widget _buildToolbar() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF173E4C), Color(0xFF1D354F)],
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 9, 16, 11),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0A222D),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(15)),
           ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.view_agenda_outlined, size: 18),
-            const SizedBox(width: 8),
-            const Text('块编辑器', style: TextStyle(fontWeight: FontWeight.w700)),
-            const Spacer(),
-            _toolButton('标题', Icons.format_size,
-                () => _insertMarkdown('## ', '', '小标题')),
-            _toolButton('粗体', Icons.format_bold,
-                () => _insertMarkdown('**', '**', '重点')),
-            _toolButton('列表', Icons.format_list_bulleted,
-                () => _insertMarkdown('- ', '', '列表项')),
-            _toolButton('引用', Icons.format_quote,
-                () => _insertMarkdown('> ', '', '引用')),
-            _toolButton(
-                '行内代码', Icons.code, () => _insertMarkdown('`', '`', '代码')),
-            _toolButton('代码块', Icons.data_object, _insertCodeBlock),
-          ],
-        ),
-      );
-
-  Widget _buildActiveBlock() => Padding(
-        key: _activeKey,
-        padding: const EdgeInsets.only(bottom: 10),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFF123B49),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: const Color(0xFF68D9CE), width: 1.4),
-            boxShadow: const [
-              BoxShadow(color: Color(0x3300D7C4), blurRadius: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.errorText ?? context.l10n.blockEditorHelp,
+                  style: TextStyle(
+                    color: widget.errorText == null
+                        ? Colors.white.withValues(alpha: .5)
+                        : Theme.of(context).colorScheme.error,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                context.l10n.blockCount(
+                  _blocks.where((block) => block.raw.trim().isNotEmpty).length,
+                ),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .4),
+                  fontSize: 12.5,
+                ),
+              ),
             ],
           ),
-          child: Focus(
-            onKeyEvent: _handleKeyEvent,
-            child: TextField(
-              controller: _activeController,
-              focusNode: _focusNode,
-              cursorColor: const Color(0xFF8FF5E9),
-              cursorWidth: 2.2,
-              cursorHeight: 22,
-              keyboardType: TextInputType.multiline,
-              minLines: _isFencedBlock(_activeController.text) ? 5 : 1,
-              maxLines: null,
-              decoration: const InputDecoration(
-                hintText: '输入 Markdown，按 Enter 完成这一块…',
-                border: InputBorder.none,
-                filled: false,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
-              style: TextStyle(
-                height: 1.55,
-                fontSize: 15.5,
-                fontFamily:
-                    _isFencedBlock(_activeController.text) ? 'monospace' : null,
-              ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildToolbar() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(colors: [Color(0xFF173E4C), Color(0xFF1D354F)]),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.view_agenda_outlined, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          context.l10n.blockEditor,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const Spacer(),
+        _toolButton(
+          context.l10n.heading,
+          Icons.format_size,
+          () => _insertMarkdown('## ', '', context.l10n.subheading),
+        ),
+        _toolButton(
+          context.l10n.bold,
+          Icons.format_bold,
+          () => _insertMarkdown('**', '**', context.l10n.emphasis),
+        ),
+        _toolButton(
+          context.l10n.list,
+          Icons.format_list_bulleted,
+          () => _insertMarkdown('- ', '', context.l10n.listItem),
+        ),
+        _toolButton(
+          context.l10n.quote,
+          Icons.format_quote,
+          () => _insertMarkdown('> ', '', context.l10n.quote),
+        ),
+        _toolButton(
+          context.l10n.inlineCode,
+          Icons.code,
+          () => _insertMarkdown('`', '`', context.l10n.code),
+        ),
+        _toolButton(
+          context.l10n.codeBlock,
+          Icons.data_object,
+          _insertCodeBlock,
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildActiveBlock() => Padding(
+    key: _activeKey,
+    padding: const EdgeInsets.only(bottom: 10),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF123B49),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFF68D9CE), width: 1.4),
+        boxShadow: const [BoxShadow(color: Color(0x3300D7C4), blurRadius: 16)],
+      ),
+      child: Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: TextField(
+          controller: _activeController,
+          focusNode: _focusNode,
+          cursorColor: const Color(0xFF8FF5E9),
+          cursorWidth: 2.2,
+          cursorHeight: 22,
+          keyboardType: TextInputType.multiline,
+          minLines: _isFencedBlock(_activeController.text) ? 5 : 1,
+          maxLines: null,
+          decoration: InputDecoration(
+            hintText: context.l10n.markdownHint,
+            border: InputBorder.none,
+            filled: false,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
             ),
           ),
+          style: TextStyle(
+            height: 1.55,
+            fontSize: 15.5,
+            fontFamily: _isFencedBlock(_activeController.text)
+                ? 'monospace'
+                : null,
+          ),
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildRenderedBlock(int index) {
     final raw = _blocks[index].raw;
@@ -237,7 +260,8 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+    final isEnter =
+        event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter) {
       if (event.logicalKey == LogicalKeyboardKey.backspace &&
@@ -346,8 +370,9 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
   void _insertMarkdown(String prefix, String suffix, String placeholder) {
     final selection = _activeController.selection;
     final hasSelection = selection.isValid && selection.start != selection.end;
-    final start =
-        selection.isValid ? selection.start : _activeController.text.length;
+    final start = selection.isValid
+        ? selection.start
+        : _activeController.text.length;
     final end = selection.isValid ? selection.end : start;
     final selected = hasSelection
         ? _activeController.text.substring(start, end)
@@ -363,11 +388,13 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
   void _insertCodeBlock() {
     final selection = _activeController.selection;
     final hasSelection = selection.isValid && selection.start != selection.end;
-    final start =
-        selection.isValid ? selection.start : _activeController.text.length;
+    final start = selection.isValid
+        ? selection.start
+        : _activeController.text.length;
     final end = selection.isValid ? selection.end : start;
-    final selected =
-        hasSelection ? _activeController.text.substring(start, end) : '在这里输入代码';
+    final selected = hasSelection
+        ? _activeController.text.substring(start, end)
+        : context.l10n.codePlaceholder;
     final replacement = '```\n$selected\n```';
     _activeController.value = TextEditingValue(
       text: _activeController.text.replaceRange(start, end, replacement),
@@ -393,46 +420,48 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
       RegExp(r'^\s*(```|~~~)', multiLine: true).hasMatch(raw);
 
   bool _hasUnclosedFence(String raw) {
-    final fences =
-        RegExp(r'^\s*(```+|~~~+)', multiLine: true).allMatches(raw).length;
+    final fences = RegExp(
+      r'^\s*(```+|~~~+)',
+      multiLine: true,
+    ).allMatches(raw).length;
     return fences.isOdd;
   }
 
   MarkdownStyleSheet _markdownStyle(BuildContext context) => MarkdownStyleSheet(
-        p: const TextStyle(height: 1.62, fontSize: 15.5),
-        h1: const TextStyle(
-          color: Color(0xFFFFD17E),
-          fontSize: 25,
-          fontWeight: FontWeight.w700,
-        ),
-        h2: const TextStyle(
-          color: Color(0xFF82E0D5),
-          fontSize: 21,
-          fontWeight: FontWeight.w700,
-        ),
-        h3: const TextStyle(
-          color: Color(0xFFBCC8FF),
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-        blockquoteDecoration: BoxDecoration(
-          color: const Color(0xFF092630),
-          borderRadius: BorderRadius.circular(8),
-          border: const Border(
-            left: BorderSide(color: Color(0xFF61D1C5), width: 4),
-          ),
-        ),
-        codeblockDecoration: BoxDecoration(
-          color: const Color(0xFF061D27),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: .08)),
-        ),
-        code: const TextStyle(
-          color: Color(0xFFFFC9E8),
-          backgroundColor: Color(0xFF061D27),
-          fontFamily: 'monospace',
-        ),
-      );
+    p: const TextStyle(height: 1.62, fontSize: 15.5),
+    h1: const TextStyle(
+      color: Color(0xFFFFD17E),
+      fontSize: 25,
+      fontWeight: FontWeight.w700,
+    ),
+    h2: const TextStyle(
+      color: Color(0xFF82E0D5),
+      fontSize: 21,
+      fontWeight: FontWeight.w700,
+    ),
+    h3: const TextStyle(
+      color: Color(0xFFBCC8FF),
+      fontSize: 18,
+      fontWeight: FontWeight.w700,
+    ),
+    blockquoteDecoration: BoxDecoration(
+      color: const Color(0xFF092630),
+      borderRadius: BorderRadius.circular(8),
+      border: const Border(
+        left: BorderSide(color: Color(0xFF61D1C5), width: 4),
+      ),
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: const Color(0xFF061D27),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: Colors.white.withValues(alpha: .08)),
+    ),
+    code: const TextStyle(
+      color: Color(0xFFFFC9E8),
+      backgroundColor: Color(0xFF061D27),
+      fontFamily: 'monospace',
+    ),
+  );
 }
 
 class _MarkdownBlock {

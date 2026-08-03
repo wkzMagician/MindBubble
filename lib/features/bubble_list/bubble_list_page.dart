@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../models/bubble.dart';
+import '../../l10n/l10n.dart';
 import '../../repositories/bubble_repository.dart';
 import '../../services/startup_service.dart';
 import '../../services/import_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/sync_service.dart';
 import '../../viewmodels/bubble_view_models.dart';
 import '../../widgets/bubble_detail_dialog.dart';
@@ -32,17 +34,17 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF061620),
       appBar: AppBar(
-        title: const Text('浮念'),
+        title: Text(context.l10n.appTitle),
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
-            tooltip: '设置',
+            tooltip: context.l10n.settings,
             icon: const Icon(Icons.settings_outlined),
             onPressed: _openSettings,
           ),
           IconButton(
-            tooltip: '导入文件',
+            tooltip: context.l10n.importFile,
             icon: const Icon(Icons.file_upload_outlined),
             onPressed: _importFile,
           ),
@@ -62,20 +64,22 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
               child: SearchBar(
                 elevation: const WidgetStatePropertyAll(0),
-                backgroundColor:
-                    const WidgetStatePropertyAll(Color(0xFF123442)),
+                backgroundColor: const WidgetStatePropertyAll(
+                  Color(0xFF123442),
+                ),
                 side: WidgetStatePropertyAll(
                   BorderSide(color: Colors.white.withValues(alpha: .1)),
                 ),
                 leading: const Icon(Icons.search),
-                hintText: '搜索标题或详细描述',
+                hintText: context.l10n.searchHint,
                 onChanged: (value) => setState(() => _query = value),
               ),
             ),
             Expanded(
               child: bubbles.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Center(child: Text('无法读取泡泡：$error')),
+                error: (error, _) =>
+                    Center(child: Text(context.l10n.readError('$error'))),
                 data: (items) => items.isEmpty
                     ? const _EmptyState()
                     : ListView.separated(
@@ -99,7 +103,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(context),
         icon: const Icon(Icons.add),
-        label: const Text('新建概念'),
+        label: Text(context.l10n.newBubble),
       ),
     );
   }
@@ -116,15 +120,17 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除这个泡泡？'),
-        content: Text('“${bubble.title}”将从本地数据中移除。'),
+        title: Text(context.l10n.confirmDeleteTitle),
+        content: Text(context.l10n.confirmDeleteBody(bubble.title)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.l10n.cancel),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除')),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.l10n.delete),
+          ),
         ],
       ),
     );
@@ -135,25 +141,29 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
   }
 
   Future<void> _openSettings() => showDialog<void>(
-        context: context,
-        builder: (_) => const _SettingsDialog(),
-      );
+    context: context,
+    builder: (_) => const _SettingsDialog(),
+  );
 
   Future<void> _importFile() async {
     // The full mapping pipeline is intentionally independent of the view;
     // this compact first-run flow recognizes title/description headers.
-    final result = await FilePicker.platform
-        .pickFiles(type: FileType.custom, allowedExtensions: ['csv', 'xlsx']);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv', 'xlsx'],
+    );
     if (result == null || result.files.single.path == null) return;
-    final rows =
-        await ImportService().readTable(File(result.files.single.path!));
+    final rows = await ImportService().readTable(
+      File(result.files.single.path!),
+    );
     var imported = 0;
     final existing = (await ref.read(bubbleRepositoryProvider).getAll())
         .map((b) => b.title.toLowerCase())
         .toSet();
     for (final row in rows) {
       final title = row.values['title'] ?? row.values['标题'] ?? '';
-      final description = row.values['description'] ??
+      final description =
+          row.values['description'] ??
           row.values['正文'] ??
           row.values['描述'] ??
           '';
@@ -162,18 +172,24 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
           !existing.add(title.trim().toLowerCase())) {
         continue;
       }
-      await ref.read(bubbleRepositoryProvider).save(Bubble(
-          id: '${DateTime.now().microsecondsSinceEpoch}-$imported',
-          title: title.trim(),
-          description: description.trim(),
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now()));
+      await ref
+          .read(bubbleRepositoryProvider)
+          .save(
+            Bubble(
+              id: '${DateTime.now().microsecondsSinceEpoch}-$imported',
+              title: title.trim(),
+              description: description.trim(),
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+          );
       imported++;
     }
     _refresh();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('已导入 $imported 个泡泡')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.importedCount(imported))),
+      );
     }
   }
 
@@ -198,17 +214,23 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.bubble_chart_outlined, size: 56),
-            const SizedBox(height: 16),
-            Text('让一个重要想法先沉入海底', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            const Text('写下标题和详细描述，让它在未来重新浮现。'),
-          ]),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bubble_chart_outlined, size: 56),
+          const SizedBox(height: 16),
+          Text(
+            context.l10n.emptyTitle,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(context.l10n.emptyBody),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SettingsDialog extends ConsumerStatefulWidget {
@@ -232,41 +254,74 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('设置'),
-        content: SizedBox(
-          width: 420,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.cloud_sync_outlined),
-              title: const Text('云端同步（WebDAV）'),
-              subtitle: const Text('坚果云、Nextcloud 等；设置账号、应用密码和加密口令。'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => showDialog<void>(
-                  context: context, builder: (_) => const _SyncDialog()),
+    title: Text(context.l10n.settings),
+    content: SizedBox(
+      width: 420,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.cloud_sync_outlined),
+            title: Text(context.l10n.cloudSync),
+            subtitle: Text(context.l10n.cloudSyncSubtitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (_) => const _SyncDialog(),
             ),
-            const Divider(),
-            if (!ref.read(startupServiceProvider).isSupported)
-              const Text('当前平台不支持登录后自动运行。Android 会在下次打开应用时恢复本地状态与同步。')
-            else if (_enabled == null)
-              const Center(child: CircularProgressIndicator())
-            else
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('开机后自动运行'),
-                subtitle: const Text('登录 Windows 后自动打开浮念。'),
-                value: _enabled!,
-                onChanged: _saving ? null : _setStartupEnabled,
-              ),
-          ]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
           ),
+          const Divider(),
+          DropdownButtonFormField<String>(
+            initialValue:
+                ref.watch(localeControllerProvider)?.languageCode ?? 'system',
+            decoration: InputDecoration(
+              labelText: context.l10n.language,
+              prefixIcon: const Icon(Icons.language),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: 'system',
+                child: Text(context.l10n.followSystem),
+              ),
+              DropdownMenuItem(value: 'zh', child: Text(context.l10n.chinese)),
+              DropdownMenuItem(value: 'en', child: Text(context.l10n.english)),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                ref
+                    .read(localeControllerProvider.notifier)
+                    .setPreference(value);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          if (!ref.read(startupServiceProvider).isSupported)
+            Text(context.l10n.unsupportedStartup)
+          else if (_enabled == null)
+            const Center(child: CircularProgressIndicator())
+          else
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(context.l10n.launchAtStartup),
+              subtitle: Text(
+                context.l10n.startupPlatformDescription(
+                  ref.read(startupServiceProvider).platformLabel,
+                ),
+              ),
+              value: _enabled!,
+              onChanged: _saving ? null : _setStartupEnabled,
+            ),
         ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(context.l10n.close),
+      ),
+    ],
+  );
 
   Future<void> _setStartupEnabled(bool enabled) async {
     setState(() => _saving = true);
@@ -286,12 +341,14 @@ class _SyncDialog extends ConsumerStatefulWidget {
 }
 
 class _SyncDialogState extends ConsumerState<_SyncDialog> {
-  final _server =
-      TextEditingController(text: 'https://dav.jianguoyun.com/dav/');
+  final _server = TextEditingController(
+    text: 'https://dav.jianguoyun.com/dav/',
+  );
   final _username = TextEditingController();
   final _appPassword = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  String? _error;
 
   @override
   void initState() {
@@ -317,52 +374,91 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('云端同步（WebDAV）'),
-        content: SizedBox(
-            width: 480,
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Text(
-                        '以坚果云为例：登录官网 → 账户信息 → 安全选项 → 添加应用密码；不要填写登录密码。保存后，下次打开应用会自动读取这些设置。'),
-                    const SizedBox(height: 16),
-                    TextField(
-                        controller: _server,
-                        decoration:
-                            const InputDecoration(labelText: 'WebDAV 服务器地址')),
-                    const SizedBox(height: 10),
-                    TextField(
-                        controller: _username,
-                        decoration:
-                            const InputDecoration(labelText: '账号（通常是邮箱）')),
-                    const SizedBox(height: 10),
-                    TextField(
-                        controller: _appPassword,
-                        obscureText: true,
-                        decoration:
-                            const InputDecoration(labelText: '应用密码 / API Key')),
-                  ]))),
-        actions: [
-          TextButton(
-              onPressed: _saving ? null : () => Navigator.pop(context),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: _saving ? null : _save,
-              child: Text(_saving ? '保存中…' : '保存并启用'))
-        ],
-      );
+    title: Text(context.l10n.cloudSync),
+    content: SizedBox(
+      width: 480,
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(context.l10n.syncInstructions),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _server,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.webDavServer,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _username,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.account,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _appPassword,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.appPassword,
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.pop(context),
+        child: Text(context.l10n.cancel),
+      ),
+      FilledButton(
+        onPressed: _saving ? null : _save,
+        child: Text(_saving ? context.l10n.saving : context.l10n.saveAndEnable),
+      ),
+    ],
+  );
   Future<void> _save() async {
-    if ([_server.text, _username.text, _appPassword.text]
-        .any((text) => text.trim().isEmpty)) {
+    if ([
+      _server.text,
+      _username.text,
+      _appPassword.text,
+    ].any((text) => text.trim().isEmpty)) {
       return;
     }
-    setState(() => _saving = true);
-    await ref.read(syncServiceProvider).configureWebDav(
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final service = ref.read(syncServiceProvider);
+      await service.configureWebDav(
         serverUrl: _server.text,
         username: _username.text,
-        appPassword: _appPassword.text);
-    if (mounted) Navigator.pop(context);
+        appPassword: _appPassword.text,
+      );
+      await service.syncNow();
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = error.toString();
+        });
+      }
+    }
   }
 }
 
@@ -399,7 +495,10 @@ class _BubbleTile extends StatelessWidget {
         border: Border.all(color: accent.withValues(alpha: .28)),
         boxShadow: const [
           BoxShadow(
-              color: Color(0x33000000), blurRadius: 18, offset: Offset(0, 8)),
+            color: Color(0x33000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
         ],
       ),
       child: Material(
@@ -416,21 +515,22 @@ class _BubbleTile extends StatelessWidget {
               color: accent.withValues(alpha: .2),
               border: Border.all(color: accent.withValues(alpha: .62)),
             ),
-            child: Icon(
-              Icons.bubble_chart_outlined,
-              color: accent,
-            ),
+            child: Icon(Icons.bubble_chart_outlined, color: accent),
           ),
           title: Text(
             bubble.title,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          subtitle: Text(bubble.description,
-              maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            bubble.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           trailing: IconButton(
-              tooltip: '编辑',
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined)),
+            tooltip: context.l10n.edit,
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined),
+          ),
         ),
       ),
     );
@@ -509,10 +609,10 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            widget.bubble == null ? '创建概念泡泡' : '编辑概念泡泡',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
+                            widget.bubble == null
+                                ? context.l10n.newBubble
+                                : context.l10n.editBubble,
+                            style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,
@@ -520,9 +620,10 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                           ),
                         ),
                         IconButton(
-                          tooltip: '关闭',
-                          onPressed:
-                              _saving ? null : () => Navigator.pop(context),
+                          tooltip: context.l10n.close,
+                          onPressed: _saving
+                              ? null
+                              : () => Navigator.pop(context),
                           icon: const Icon(Icons.close, color: Colors.white),
                         ),
                       ],
@@ -541,11 +642,11 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                       child: TextFormField(
                         controller: _title,
                         autofocus: true,
-                        decoration: const InputDecoration(
-                          labelText: '标题',
-                          prefixIcon: Icon(Icons.title),
+                        decoration: InputDecoration(
+                          labelText: context.l10n.titleLabel,
+                          prefixIcon: const Icon(Icons.title),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
+                          contentPadding: const EdgeInsets.symmetric(
                             horizontal: 18,
                             vertical: 16,
                           ),
@@ -579,15 +680,20 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          onPressed:
-                              _saving ? null : () => Navigator.pop(context),
-                          child: const Text('取消'),
+                          onPressed: _saving
+                              ? null
+                              : () => Navigator.pop(context),
+                          child: Text(context.l10n.cancel),
                         ),
                         const SizedBox(width: 10),
                         FilledButton.icon(
                           onPressed: _saving ? null : _save,
                           icon: const Icon(Icons.check),
-                          label: Text(_saving ? '保存中…' : '保存泡泡'),
+                          label: Text(
+                            _saving
+                                ? context.l10n.saving
+                                : context.l10n.saveBubble,
+                          ),
                         ),
                       ],
                     ),
@@ -602,19 +708,20 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   }
 
   String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? '此项为必填项' : null;
+      value == null || value.trim().isEmpty ? context.l10n.requiredField : null;
 
   Future<void> _save() async {
     final titleIsValid = _formKey.currentState!.validate();
     final descriptionIsValid = _description.text.trim().isNotEmpty;
     if (!descriptionIsValid) {
-      setState(() => _descriptionError = '请至少填写一个正文内容块');
+      setState(() => _descriptionError = context.l10n.descriptionRequired);
     }
     if (!titleIsValid || !descriptionIsValid) return;
     setState(() => _saving = true);
     final existing = widget.bubble;
     final bubble = Bubble(
-      id: existing?.id ??
+      id:
+          existing?.id ??
           '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}',
       title: _title.text.trim(),
       description: _description.text.trim(),

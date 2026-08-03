@@ -83,6 +83,12 @@ Open **Manage Bubbles → Settings → WebDAV sync**. The app works with Jianguo
 
 The WebDAV configuration is stored as `webdav_config.json` in the application support directory. Bubble content is not additionally end-to-end encrypted.
 
+The app connects and syncs immediately when the configuration is saved. It then syncs automatically at launch, on resume, two seconds after local bubble changes, and every five minutes while open. Remote snapshots are stored per device under `MindBubble/devices/` to avoid concurrent devices overwriting one another. Deletion tombstones are retained so an offline device cannot restore a deleted bubble.
+
+### TODO: OpenDAL
+
+The current WebDAV transport uses `package:http` and `xml` for the four operations MindBubble needs: MKCOL, PROPFIND, GET, and PUT. Re-evaluate Apache OpenDAL when its Dart binding becomes stable or when MindBubble needs multiple cloud-storage backends such as S3.
+
 ## Packaging
 
 ```powershell

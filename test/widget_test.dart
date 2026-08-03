@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mind_bubble/l10n/app_localizations.dart';
 import 'package:mind_bubble/widgets/markdown_block_editor.dart';
 
 void main() {
   Widget editor(TextEditingController controller) => MaterialApp(
-        theme: ThemeData.dark(useMaterial3: true),
-        home: Scaffold(
-          body: SizedBox(
-            width: 900,
-            height: 650,
-            child: MarkdownBlockEditor(controller: controller),
-          ),
-        ),
-      );
+    theme: ThemeData.dark(useMaterial3: true),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    locale: const Locale('zh'),
+    home: Scaffold(
+      body: SizedBox(
+        width: 900,
+        height: 650,
+        child: MarkdownBlockEditor(controller: controller),
+      ),
+    ),
+  );
 
   testWidgets('Enter commits the active block and renders it', (tester) async {
     final controller = TextEditingController();
@@ -37,8 +41,9 @@ void main() {
     expect(controller.text, '## 核心观点\n\n下一行可以直接输入');
   });
 
-  testWidgets('a complete fenced code block renders after Enter',
-      (tester) async {
+  testWidgets('a complete fenced code block renders after Enter', (
+    tester,
+  ) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(editor(controller));

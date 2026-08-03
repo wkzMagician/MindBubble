@@ -1,6 +1,11 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+final databaseProvider = Provider<AppDatabase>(
+  (_) => throw UnimplementedError(),
+);
 
 class AppDatabase {
   AppDatabase._(this._database);
@@ -12,18 +17,19 @@ class AppDatabase {
     final database = await databaseFactoryFfi.openDatabase(
       path.join(directory.path, 'mind_bubble.db'),
       options: OpenDatabaseOptions(
-          version: 5,
-          onCreate: (db, _) async {
-            await _createBubbles(db);
-            await _createDailySelections(db);
-          },
-          onUpgrade: (db, oldVersion, _) async {
-            if (oldVersion < 2) await _createDailySelections(db);
-            if (oldVersion < 4) await _migrateToV4(db);
-            if (oldVersion < 5) {
-              await db.update('bubbles', {'appearance_frequency': 3});
-            }
-          }),
+        version: 5,
+        onCreate: (db, _) async {
+          await _createBubbles(db);
+          await _createDailySelections(db);
+        },
+        onUpgrade: (db, oldVersion, _) async {
+          if (oldVersion < 2) await _createDailySelections(db);
+          if (oldVersion < 4) await _migrateToV4(db);
+          if (oldVersion < 5) {
+            await db.update('bubbles', {'appearance_frequency': 3});
+          }
+        },
+      ),
     );
     return AppDatabase._(database);
   }
@@ -50,12 +56,15 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.execute('ALTER TABLE bubbles RENAME TO bubbles_legacy');
     await _createBubbles(db);
-    await db.execute('''
+    await db.execute(
+      '''
       INSERT INTO bubbles (id,title,description,created_at,updated_at,last_shown_at,shown_count,appearance_frequency,field_versions)
       SELECT id,title,description,created_at,?,last_shown_at,shown_count,
         CASE familiarity WHEN 0 THEN 5 WHEN 2 THEN 1 ELSE 3 END, ''
       FROM bubbles_legacy
-    ''', [now]);
+    ''',
+      [now],
+    );
     await db.execute('DROP TABLE bubbles_legacy');
   }
 }
