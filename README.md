@@ -4,7 +4,7 @@
 
 ## 支持的平台
 
-Windows、macOS、Linux 和 Android 共用同一 SQLite 数据模型。Windows、macOS、Linux 的设置页可以开启“登录后自动运行”；Android 不会在开机后后台拉起，而会在用户下次打开应用时恢复状态与同步。
+Windows、macOS、Linux 和 Android 共用同一 Markdown 文档格式。Windows、macOS、Linux 的设置页可以开启“登录后自动运行”；Android 不会在开机后后台拉起，而会在用户下次打开应用时恢复状态与同步。
 
 | 平台 | 开发要求 | 发布物 |
 | --- | --- | --- |
@@ -27,7 +27,13 @@ flutter test
 
 ## 导入
 
-管理页顶部的导入按钮支持 CSV 和 XLSX。首发识别 `title`/`标题` 与 `description`/`正文`/`描述` 列，缺失标题或正文的行跳过；标题按大小写无关去重。导入服务已与 UI 分离，后续映射向导和兼容 SQLite 数据库导入可复用同一服务。
+管理页顶部的导入按钮支持 CSV 和 XLSX。首发识别 `title`/`标题` 与 `description`/`正文`/`描述` 列，缺失标题或正文的行跳过；标题按大小写无关去重。
+
+## 本地文档
+
+每个泡泡是“文档/MindBubble/bubbles”中的一个 `<id>.md`，JSON Front Matter 保存标题、频率和展示统计，Front Matter 后保存普通 Markdown 正文。文档是唯一真实数据源；搜索和列表直接从文档加载。设置页可直接打开该目录，外部编辑保存后应用会自动刷新并触发同步。
+
+`daily-selection.json` 和 `sync-state.json` 位于应用支持目录，仅作为本机缓存和同步技术状态，不上传云端。升级时会把旧 `mind_bubble.db` 中的有效泡泡一次性导出为 Markdown，旧数据库保留作备份，之后不再参与运行。
 
 ## Agent / MCP
 
@@ -38,15 +44,15 @@ flutter test
 先确认 Python 可用，然后将下面命令中的占位路径改为你的实际路径：
 
 ```powershell
-$env:MIND_BUBBLE_DB = "/path/to/your/data/mind_bubble.db"
+$env:MIND_BUBBLE_DIR = "/path/to/Documents/MindBubble/bubbles"
 python /path/to/your/project/tools/mind_bubble_mcp.py
 ```
 
-正常情况下该进程不会输出提示，而是等待 MCP 客户端通过标准输入发送请求；不要手工输入 JSON。数据库文件在第一次启动 MindBubble 后自动创建。
+正常情况下该进程不会输出提示，而是等待 MCP 客户端通过标准输入发送请求；不要手工输入 JSON。泡泡目录在第一次启动 MindBubble 后自动创建。
 
 ### 给 Agent 配置 MCP
 
-配置的核心是：以 `python` 运行 `tools/mind_bubble_mcp.py`，并把 `MIND_BUBBLE_DB` 指向 MindBubble 实际使用的数据库。可直接以 [示例配置](tools/mind-bubble.mcp.json) 为模板：
+配置的核心是：以 `python` 运行 `tools/mind_bubble_mcp.py`，并把 `MIND_BUBBLE_DIR` 指向 MindBubble 的 `bubbles` 文档目录。可直接以 [示例配置](tools/mind-bubble.mcp.json) 为模板：
 
 ```json
 {
@@ -55,7 +61,7 @@ python /path/to/your/project/tools/mind_bubble_mcp.py
       "command": "python",
       "args": ["/path/to/your/project/tools/mind_bubble_mcp.py"],
       "env": {
-        "MIND_BUBBLE_DB": "/path/to/your/data/mind_bubble.db"
+        "MIND_BUBBLE_DIR": "/path/to/Documents/MindBubble/bubbles"
       }
     }
   }
@@ -81,13 +87,17 @@ python /path/to/your/project/tools/mind_bubble_mcp.py
 5. 点击“保存并启用”。配置会持久化，之后启动应用不需要重新输入；设置页中的密码仍以黑点显示。
 6. 需要同步的每台设备都填写同一份 WebDAV 凭据。
 
-WebDAV 配置保存在应用支持目录的 `webdav_config.json` 中。按照产品设定，泡泡同步内容不进行额外端到端加密。
+WebDAV 配置保存在应用支持目录的 `MindBubble/webdav-config.json` 中。按照产品设定，泡泡同步内容不进行额外端到端加密。
 
-保存配置时应用会立即连接并同步。之后会在应用启动、回到前台、本地泡泡发生变更（2 秒防抖）以及应用保持打开期间每 5 分钟自动同步。远端数据存放在 `MindBubble/devices/`，每台设备维护自己的快照，避免多设备同时上传时相互覆盖；删除记录会作为同步墓碑保留，防止离线设备让已删除泡泡重新出现。
+保存配置时应用会检查服务器的 ETag 和 `If-Match` 能力并立即同步。之后会在应用启动进入 Ocean 前、回到前台、本地文档发生变更（15 秒防抖）以及应用保持打开期间每 15 分钟自动同步。无内容变化的同步只更新同步状态，不刷新 Ocean 或泡泡列表。
+
+远端目录为 `MindBubble/v2/bubbles/`，每个泡泡对应一个 Markdown 文件。修改使用 ETag 条件 PUT，新建使用 `If-None-Match: *`，删除使用条件 DELETE。两端修改不同字段时自动合并；同字段冲突或“删除与修改”并发时由设置页提示选择本地或远端版本。远端不保留墓碑文件。
+
+首次升级会只读导入旧 `MindBubble/devices/` 快照一次但不自动删除它们。所有参与同步的设备都应升级到文档 v2；旧客户端之后继续写入 v1 的变化不会进入 v2。
 
 ### TODO：OpenDAL
 
-当前 WebDAV 传输层仅基于 `package:http` 和 `xml` 实现应用所需的 MKCOL、PROPFIND、GET、PUT。待 Apache OpenDAL 的 Dart binding 稳定，或浮念需要同时支持 S3 等多个云存储后端时，重新评估迁移到 OpenDAL。
+当前 WebDAV 传输层基于 `package:http` 和 `xml` 实现 MKCOL、PROPFIND、GET、条件 PUT 和 DELETE。待 Apache OpenDAL 的 Dart binding 稳定，或浮念需要同时支持 S3 等多个云存储后端时，重新评估迁移到 OpenDAL。
 
 ## 打包
 

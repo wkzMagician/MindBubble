@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../models/bubble.dart';
 import '../../l10n/l10n.dart';
 import '../../repositories/bubble_repository.dart';
+import '../../services/bubble_document_store.dart';
 import '../../services/startup_service.dart';
 import '../../services/import_service.dart';
 import '../../services/locale_service.dart';
@@ -176,7 +177,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
           .read(bubbleRepositoryProvider)
           .save(
             Bubble(
-              id: '${DateTime.now().microsecondsSinceEpoch}-$imported',
+              id: _newBubbleId(),
               title: title.trim(),
               description: description.trim(),
               createdAt: DateTime.now(),
@@ -243,6 +244,8 @@ class _SettingsDialog extends ConsumerStatefulWidget {
 class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   bool? _enabled;
   bool _saving = false;
+  bool _syncing = false;
+  String? _syncError;
 
   @override
   void initState() {
@@ -253,75 +256,157 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(context.l10n.settings),
-    content: SizedBox(
-      width: 420,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.cloud_sync_outlined),
-            title: Text(context.l10n.cloudSync),
-            subtitle: Text(context.l10n.cloudSyncSubtitle),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => showDialog<void>(
-              context: context,
-              builder: (_) => const _SyncDialog(),
-            ),
-          ),
-          const Divider(),
-          DropdownButtonFormField<String>(
-            initialValue:
-                ref.watch(localeControllerProvider)?.languageCode ?? 'system',
-            decoration: InputDecoration(
-              labelText: context.l10n.language,
-              prefixIcon: const Icon(Icons.language),
-            ),
-            items: [
-              DropdownMenuItem(
-                value: 'system',
-                child: Text(context.l10n.followSystem),
-              ),
-              DropdownMenuItem(value: 'zh', child: Text(context.l10n.chinese)),
-              DropdownMenuItem(value: 'en', child: Text(context.l10n.english)),
-            ],
-            onChanged: (value) {
-              if (value != null) {
-                ref
-                    .read(localeControllerProvider.notifier)
-                    .setPreference(value);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          if (!ref.read(startupServiceProvider).isSupported)
-            Text(context.l10n.unsupportedStartup)
-          else if (_enabled == null)
-            const Center(child: CircularProgressIndicator())
-          else
-            SwitchListTile(
+  Widget build(BuildContext context) {
+    ref.watch(syncRevisionProvider);
+    final sync = ref.read(syncServiceProvider);
+    final documentIssues = ref.read(bubbleDocumentStoreProvider).issues;
+    return AlertDialog(
+      title: Text(context.l10n.settings),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(context.l10n.launchAtStartup),
+              leading: const Icon(Icons.cloud_sync_outlined),
+              title: Text(context.l10n.cloudSync),
               subtitle: Text(
-                context.l10n.startupPlatformDescription(
-                  ref.read(startupServiceProvider).platformLabel,
+                _syncError ??
+                    (sync.lastSyncedAt == null
+                        ? context.l10n.cloudSyncSubtitle
+                        : context.l10n.lastSynced(
+                            sync.lastSyncedAt!.toLocal().toString(),
+                          )),
+                style: _syncError == null
+                    ? null
+                    : TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (sync.isConfigured)
+                    IconButton(
+                      tooltip: context.l10n.syncNow,
+                      onPressed: _syncing ? null : _syncNow,
+                      icon: _syncing
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
+                    ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => const _SyncDialog(),
+              ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.folder_outlined),
+              title: Text(context.l10n.openDocumentFolder),
+              subtitle: Text(ref.read(bubbleDocumentStoreProvider).root.path),
+              onTap: _openDocumentFolder,
+            ),
+            if (documentIssues.isNotEmpty)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.description_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  context.l10n.invalidDocuments(documentIssues.length),
+                ),
+                subtitle: Text(documentIssues.first.message),
+              ),
+            if (sync.conflicts.isNotEmpty)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.warning_amber_rounded,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(context.l10n.syncConflicts(sync.conflicts.length)),
+                subtitle: Text(context.l10n.syncConflictsSubtitle),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const _ConflictDialog(),
                 ),
               ),
-              value: _enabled!,
-              onChanged: _saving ? null : _setStartupEnabled,
+            const Divider(),
+            DropdownButtonFormField<String>(
+              initialValue:
+                  ref.watch(localeControllerProvider)?.languageCode ?? 'system',
+              decoration: InputDecoration(
+                labelText: context.l10n.language,
+                prefixIcon: const Icon(Icons.language),
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: 'system',
+                  child: Text(context.l10n.followSystem),
+                ),
+                DropdownMenuItem(
+                  value: 'zh',
+                  child: Text(context.l10n.chinese),
+                ),
+                DropdownMenuItem(
+                  value: 'en',
+                  child: Text(context.l10n.english),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  ref
+                      .read(localeControllerProvider.notifier)
+                      .setPreference(value);
+                }
+              },
             ),
-        ],
+            const SizedBox(height: 12),
+            if (!ref.read(startupServiceProvider).isSupported)
+              Text(context.l10n.unsupportedStartup)
+            else if (_enabled == null)
+              const Center(child: CircularProgressIndicator())
+            else
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(context.l10n.launchAtStartup),
+                subtitle: Text(
+                  context.l10n.startupPlatformDescription(
+                    ref.read(startupServiceProvider).platformLabel,
+                  ),
+                ),
+                value: _enabled!,
+                onChanged: _saving ? null : _setStartupEnabled,
+              ),
+          ],
+        ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(context.l10n.close),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(context.l10n.close),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openDocumentFolder() async {
+    final directory = ref.read(bubbleDocumentStoreProvider).root.path;
+    if (Platform.isWindows) {
+      await Process.start('explorer', [directory]);
+    } else if (Platform.isMacOS) {
+      await Process.start('open', [directory]);
+    } else {
+      await Process.start('xdg-open', [directory]);
+    }
+  }
 
   Future<void> _setStartupEnabled(bool enabled) async {
     setState(() => _saving = true);
@@ -332,6 +417,132 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  Future<void> _syncNow() async {
+    setState(() {
+      _syncing = true;
+      _syncError = null;
+    });
+    try {
+      await ref.read(syncServiceProvider).syncNow();
+    } catch (error) {
+      if (mounted) setState(() => _syncError = '$error');
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+}
+
+class _ConflictDialog extends ConsumerStatefulWidget {
+  const _ConflictDialog();
+
+  @override
+  ConsumerState<_ConflictDialog> createState() => _ConflictDialogState();
+}
+
+class _ConflictDialogState extends ConsumerState<_ConflictDialog> {
+  String? _resolving;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(syncRevisionProvider);
+    final conflicts = ref.read(syncServiceProvider).conflicts;
+    return AlertDialog(
+      title: Text(context.l10n.resolveSyncConflicts),
+      content: SizedBox(
+        width: 560,
+        child: conflicts.isEmpty
+            ? Text(context.l10n.noSyncConflicts)
+            : ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final conflict in conflicts)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              conflict.id,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(_conflictReason(context, conflict.reason)),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: _resolving == null
+                                      ? () => _resolve(
+                                          conflict.id,
+                                          ConflictResolution.remote,
+                                        )
+                                      : null,
+                                  child: Text(context.l10n.keepRemote),
+                                ),
+                                FilledButton(
+                                  onPressed: _resolving == null
+                                      ? () => _resolve(
+                                          conflict.id,
+                                          ConflictResolution.local,
+                                        )
+                                      : null,
+                                  child: Text(context.l10n.keepLocal),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_error != null)
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _resolving == null ? () => Navigator.pop(context) : null,
+          child: Text(context.l10n.close),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _resolve(String id, ConflictResolution resolution) async {
+    setState(() {
+      _resolving = id;
+      _error = null;
+    });
+    try {
+      await ref.read(syncServiceProvider).resolveConflict(id, resolution);
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _resolving = null);
+    }
+  }
+
+  String _conflictReason(
+    BuildContext context,
+    String reason,
+  ) => switch (reason) {
+    'local-delete-remote-edit' => context.l10n.localDeleteRemoteEditConflict,
+    'remote-delete-local-edit' => context.l10n.remoteDeleteLocalEditConflict,
+    'same-field' => context.l10n.sameFieldConflict,
+    'unconfirmed-local-delete' => context.l10n.unconfirmedLocalDeleteConflict,
+    _ => context.l10n.divergedDocumentConflict,
+  };
 }
 
 class _SyncDialog extends ConsumerStatefulWidget {
@@ -720,9 +931,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
     setState(() => _saving = true);
     final existing = widget.bubble;
     final bubble = Bubble(
-      id:
-          existing?.id ??
-          '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}',
+      id: existing?.id ?? _newBubbleId(),
       title: _title.text.trim(),
       description: _description.text.trim(),
       createdAt: existing?.createdAt ?? DateTime.now(),
@@ -730,8 +939,22 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
       shownCount: existing?.shownCount ?? 0,
       updatedAt: DateTime.now(),
       appearanceFrequency: existing?.appearanceFrequency ?? 3,
+      shownByDevice: existing?.shownByDevice ?? const {},
     );
     await ref.read(bubbleRepositoryProvider).save(bubble);
     if (mounted) Navigator.pop(context, true);
   }
+}
+
+String _newBubbleId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes
+      .map((value) => value.toRadixString(16).padLeft(2, '0'))
+      .join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+      '${hex.substring(20)}';
 }

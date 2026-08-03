@@ -51,7 +51,7 @@ void main() {
   </d:response>
   <d:response>
     <d:href>/dav/MindBubble/devices/device-a.json</d:href>
-    <d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat>
+    <d:propstat><d:prop><d:resourcetype/><d:getetag>"etag-a"</d:getetag></d:prop></d:propstat>
   </d:response>
 </d:multistatus>''',
           207,
@@ -69,6 +69,10 @@ void main() {
       resources.where((resource) => !resource.isDirectory).single.path,
       '/MindBubble/devices/device-a.json',
     );
+    expect(
+      resources.where((resource) => !resource.isDirectory).single.etag,
+      '"etag-a"',
+    );
   });
 
   test('read and write transfer bytes with GET and PUT', () async {
@@ -80,21 +84,30 @@ void main() {
       client: MockClient((request) async {
         requests.add(request);
         if (request.method == 'GET') {
-          return http.Response.bytes(utf8.encode('{"ok":true}'), 200);
+          return http.Response.bytes(
+            utf8.encode('{"ok":true}'),
+            200,
+            headers: {'etag': '"v1"'},
+          );
         }
-        return http.Response('', 204);
+        return http.Response('', 204, headers: {'etag': '"v2"'});
       }),
     );
 
     final downloaded = await transport.read('/MindBubble/devices/a.json');
-    await transport.write(
+    final uploadedEtag = await transport.write(
       '/MindBubble/devices/a.json',
       utf8.encode('{"updated":true}'),
+      ifMatch: '"v1"',
+      contentType: 'application/json; charset=utf-8',
     );
 
-    expect(utf8.decode(downloaded), '{"ok":true}');
+    expect(utf8.decode(downloaded.bytes), '{"ok":true}');
+    expect(downloaded.etag, '"v1"');
+    expect(uploadedEtag, '"v2"');
     expect(requests.map((request) => request.method), ['GET', 'PUT']);
     expect(requests.last.body, '{"updated":true}');
+    expect(requests.last.headers['If-Match'], '"v1"');
     expect(
       requests.last.headers['Content-Type'],
       'application/json; charset=utf-8',
@@ -123,4 +136,22 @@ void main() {
       );
     },
   );
+
+  test('delete carries the remote ETag and treats 404 as success', () async {
+    late http.Request captured;
+    final transport = HttpWebDavTransport(
+      serverUrl: 'https://example.test/dav/',
+      username: 'user',
+      password: 'password',
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response('', 404);
+      }),
+    );
+
+    await transport.delete('/MindBubble/v2/bubbles/a.md', ifMatch: '"v3"');
+
+    expect(captured.method, 'DELETE');
+    expect(captured.headers['If-Match'], '"v3"');
+  });
 }

@@ -12,7 +12,7 @@ final schedulerProvider = Provider<SchedulerService>(
 
 class SchedulerService {
   SchedulerService(this._repository, {Random? random})
-      : _random = random ?? Random();
+    : _random = random ?? Random();
 
   final BubbleRepository _repository;
   final Random _random;
@@ -23,12 +23,45 @@ class SchedulerService {
   }) async {
     final timestamp = now ?? DateTime.now();
     final date = dateKey(timestamp);
+    final allBubbles = await _repository.getAll();
+    final activeById = {
+      for (final bubble in allBubbles.where((bubble) => !bubble.isDeleted))
+        bubble.id: bubble,
+    };
+    final targetCount = min(count, activeById.length);
     final cached = await _repository.getDailySelection(date);
-    if (cached != null) return _loadSelection(cached);
+    if (cached != null) {
+      final retained = cached.bubbleIds
+          .map((id) => activeById[id])
+          .whereType<Bubble>()
+          .toList();
+      if (retained.length == targetCount) return retained;
 
-    final bubbles = await _repository.getAll();
-    final selected =
-        generateDailyBubbles(bubbles, now: timestamp, count: count);
+      final retainedIds = retained.map((bubble) => bubble.id).toSet();
+      final additions = generateDailyBubbles(
+        allBubbles.where((bubble) => !retainedIds.contains(bubble.id)).toList(),
+        now: timestamp,
+        count: targetCount - retained.length,
+      );
+      final selected = [...retained, ...additions];
+      final selection = DailySelection(
+        date: date,
+        bubbleIds: selected.map((bubble) => bubble.id).toList(),
+        generatedAt: cached.generatedAt,
+      );
+      await _repository.saveDailySelection(selection);
+      await _repository.recordShown(
+        additions.map((bubble) => bubble.id).toList(),
+        timestamp,
+      );
+      return selected;
+    }
+
+    final selected = generateDailyBubbles(
+      allBubbles,
+      now: timestamp,
+      count: count,
+    );
     final selection = DailySelection(
       date: date,
       bubbleIds: selected.map((bubble) => bubble.id).toList(),
@@ -39,15 +72,6 @@ class SchedulerService {
     return selected;
   }
 
-  Future<List<Bubble>> _loadSelection(DailySelection selection) async {
-    final bubbles = <Bubble>[];
-    for (final id in selection.bubbleIds) {
-      final bubble = await _repository.getById(id);
-      if (bubble != null && !bubble.isDeleted) bubbles.add(bubble);
-    }
-    return bubbles;
-  }
-
   List<Bubble> generateDailyBubbles(
     List<Bubble> bubbles, {
     required DateTime now,
@@ -55,15 +79,18 @@ class SchedulerService {
   }) {
     final scored = bubbles
         .where((bubble) => !bubble.isDeleted)
-        .map((bubble) => ScoredBubble(
-              bubble,
-              calculateScore(bubble,
-                  now: now, randomValue: _random.nextDouble()),
-            ))
+        .map(
+          (bubble) => ScoredBubble(
+            bubble,
+            calculateScore(bubble, now: now, randomValue: _random.nextDouble()),
+          ),
+        )
         .toList();
-    return weightedRandomSelect(scored, count, _random)
-        .map((item) => item.bubble)
-        .toList();
+    return weightedRandomSelect(
+      scored,
+      count,
+      _random,
+    ).map((item) => item.bubble).toList();
   }
 
   static String dateKey(DateTime date) =>
@@ -77,7 +104,8 @@ class SchedulerService {
     const day = Duration(days: 1);
     final ageDays =
         now.difference(bubble.createdAt).inMilliseconds / day.inMilliseconds;
-    final daysSinceShown = (bubble.lastShownAt == null
+    final daysSinceShown =
+        (bubble.lastShownAt == null
                 ? now.difference(bubble.createdAt)
                 : now.difference(bubble.lastShownAt!))
             .inMilliseconds /
@@ -89,8 +117,8 @@ class SchedulerService {
     final recentPenalty = daysSinceShown < 1
         ? 50
         : daysSinceShown < 3
-            ? 20
-            : 0;
+        ? 20
+        : 0;
     return newBubbleScore +
         overdueScore +
         frequencyScore +

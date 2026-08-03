@@ -1,144 +1,129 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import '../database/database.dart';
 import '../models/bubble.dart';
 import '../models/daily_selection.dart';
+import '../services/bubble_document_store.dart';
+import '../services/daily_selection_cache.dart';
+import '../services/device_identity_service.dart';
 import '../services/sync_service.dart';
+import '../services/sync_state_store.dart';
 
 final bubbleRevisionProvider = StateProvider<int>((_) => 0);
-final databaseDataVersionProvider = StreamProvider<int>((ref) async* {
-  final database = ref.watch(databaseProvider).connection;
-  var last = -1;
-  while (true) {
-    final value =
-        (await database.rawQuery('PRAGMA data_version')).single.values.first
-            as int;
-    if (value != last) {
-      last = value;
-      yield value;
-    }
-    await Future<void>.delayed(const Duration(seconds: 2));
-  }
+
+final bubbleRepositoryProvider = Provider<BubbleRepository>((ref) {
+  return BubbleRepository(
+    ref.watch(bubbleDocumentStoreProvider),
+    ref.watch(dailySelectionCacheProvider),
+    ref.watch(deviceIdentityProvider),
+    ref.watch(syncStateStoreProvider),
+    () {
+      ref.read(bubbleRevisionProvider.notifier).state++;
+      ref.read(syncServiceProvider).scheduleSync();
+    },
+  );
 });
-final bubbleRepositoryProvider = Provider<BubbleRepository>(
-  (ref) => BubbleRepository(ref.watch(databaseProvider).connection, () {
-    ref.read(bubbleRevisionProvider.notifier).state++;
-    final service = ref.read(syncServiceProvider);
-    unawaited(
-      service
-          .loadConfig()
-          .then((_) => service.scheduleSync())
-          .catchError((Object _) {}),
-    );
-  }),
-);
 
 class BubbleRepository {
-  BubbleRepository(this._database, this._changed);
-  final Database _database;
+  BubbleRepository(
+    this._store,
+    this._dailyCache,
+    this._identity,
+    this._syncState,
+    this._changed,
+  );
+
+  final BubbleDocumentStore _store;
+  final DailySelectionCache _dailyCache;
+  final DeviceIdentity _identity;
+  final SyncStateStore _syncState;
   final void Function() _changed;
 
   Future<List<Bubble>> getAll({
     String query = '',
     bool includeDeleted = false,
   }) async {
-    final normalized = query.trim();
-    final clauses = <String>[
-      if (!includeDeleted) 'deleted_at IS NULL',
-      if (normalized.isNotEmpty) '(title LIKE ? OR description LIKE ?)',
-    ];
-    final rows = await _database.query(
-      'bubbles',
-      where: clauses.join(' AND '),
-      whereArgs: normalized.isEmpty ? null : List.filled(2, '%$normalized%'),
-      orderBy: 'updated_at DESC',
-    );
-    return rows.map(Bubble.fromMap).toList();
+    final normalized = query.trim().toLowerCase();
+    final bubbles = await _store.readAll();
+    return bubbles.where((bubble) {
+      if (!includeDeleted && bubble.isDeleted) return false;
+      if (normalized.isEmpty) return true;
+      return bubble.title.toLowerCase().contains(normalized) ||
+          bubble.description.toLowerCase().contains(normalized);
+    }).toList();
   }
 
   Future<void> save(Bubble bubble) async {
-    await _database.insert(
-      'bubbles',
-      bubble.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await _store.save(bubble);
+    if (_syncState.pendingDeletes.remove(bubble.id)) {
+      await _store.clearDeleteIntent(bubble.id);
+      await _syncState.save();
+    }
     _changed();
   }
 
   Future<void> delete(String id) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await _database.update(
-      'bubbles',
-      {'deleted_at': now, 'updated_at': now},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await _store.markDeleteIntent(id);
+    _syncState.pendingDeletes.add(id);
+    await _syncState.save();
+    try {
+      await _store.delete(id);
+    } catch (_) {
+      _syncState.pendingDeletes.remove(id);
+      await _store.clearDeleteIntent(id);
+      await _syncState.save();
+      rethrow;
+    }
     _changed();
   }
 
   Future<Bubble?> getById(String id, {bool includeDeleted = false}) async {
-    final rows = await _database.query(
-      'bubbles',
-      where: includeDeleted ? 'id = ?' : 'id = ? AND deleted_at IS NULL',
-      whereArgs: [id],
-      limit: 1,
-    );
-    return rows.isEmpty ? null : Bubble.fromMap(rows.single);
+    final document = await _store.readDocument(id);
+    final bubble = document?.bubble;
+    if (bubble == null || (!includeDeleted && bubble.isDeleted)) return null;
+    return bubble;
   }
 
   Future<void> updateFrequency(String id, int frequency) async {
     if (frequency < 1 || frequency > 5) {
       throw ArgumentError.value(frequency, 'frequency');
     }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await _database.update(
-      'bubbles',
-      {'appearance_frequency': frequency, 'updated_at': now},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    _changed();
-  }
-
-  Future<DailySelection?> getDailySelection(String date) async {
-    final rows = await _database.query(
-      'daily_selections',
-      where: 'date = ?',
-      whereArgs: [date],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    final row = rows.single;
-    return DailySelection(
-      date: row['date']! as String,
-      bubbleIds: (row['bubble_ids']! as String)
-          .split(',')
-          .where((id) => id.isNotEmpty)
-          .toList(),
-      generatedAt: DateTime.fromMillisecondsSinceEpoch(
-        row['generated_at']! as int,
+    final bubble = await getById(id);
+    if (bubble == null) return;
+    await save(
+      bubble.copyWith(
+        appearanceFrequency: frequency,
+        updatedAt: DateTime.now(),
       ),
     );
   }
 
+  Future<DailySelection?> getDailySelection(String date) =>
+      _dailyCache.read(date);
+
   Future<void> saveDailySelection(DailySelection selection) =>
-      _database.insert('daily_selections', {
-        'date': selection.date,
-        'bubble_ids': selection.bubbleIds.join(','),
-        'generated_at': selection.generatedAt.millisecondsSinceEpoch,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      _dailyCache.write(selection);
+
   Future<void> recordShown(List<String> ids, DateTime shownAt) async {
-    final batch = _database.batch();
     for (final id in ids) {
-      batch.rawUpdate(
-        'UPDATE bubbles SET last_shown_at = ?, shown_count = shown_count + 1, updated_at = ? WHERE id = ?',
-        [shownAt.millisecondsSinceEpoch, shownAt.millisecondsSinceEpoch, id],
+      final bubble = await getById(id);
+      if (bubble == null) continue;
+      final current =
+          bubble.shownByDevice[_identity.id] ?? const BubbleShowStats(count: 0);
+      await _store.save(
+        bubble.copyWith(
+          updatedAt: shownAt,
+          shownByDevice: {
+            ...bubble.shownByDevice,
+            _identity.id: BubbleShowStats(
+              count: current.count + 1,
+              lastShownAt: shownAt,
+            ),
+          },
+        ),
       );
     }
-    await batch.commit(noResult: true);
     _changed();
   }
 }

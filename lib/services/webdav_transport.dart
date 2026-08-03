@@ -9,11 +9,20 @@ class WebDavResource {
     required this.path,
     required this.name,
     required this.isDirectory,
+    this.etag,
   });
 
   final String path;
   final String name;
   final bool isDirectory;
+  final String? etag;
+}
+
+class WebDavReadResult {
+  const WebDavReadResult(this.bytes, this.etag);
+
+  final Uint8List bytes;
+  final String? etag;
 }
 
 class WebDavTransportException implements Exception {
@@ -38,8 +47,15 @@ class WebDavTransportException implements Exception {
 abstract class WebDavTransport {
   Future<void> ensureDirectory(String remotePath);
   Future<List<WebDavResource>> list(String remotePath);
-  Future<Uint8List> read(String remotePath);
-  Future<void> write(String remotePath, List<int> bytes);
+  Future<WebDavReadResult> read(String remotePath);
+  Future<String?> write(
+    String remotePath,
+    List<int> bytes, {
+    String? ifMatch,
+    bool createOnly = false,
+    String contentType = 'application/octet-stream',
+  });
+  Future<void> delete(String remotePath, {String? ifMatch});
   void close();
 }
 
@@ -47,7 +63,7 @@ abstract class WebDavTransport {
 ///
 /// TODO(opendal): Re-evaluate Apache OpenDAL when its Dart binding is stable,
 /// or when MindBubble needs multiple cloud-storage backends. Until then, keep
-/// this adapter limited to MKCOL, PROPFIND, GET, and PUT.
+/// this adapter limited to MKCOL, PROPFIND, GET, conditional PUT, and DELETE.
 class HttpWebDavTransport implements WebDavTransport {
   HttpWebDavTransport({
     required String serverUrl,
@@ -97,6 +113,7 @@ class HttpWebDavTransport implements WebDavTransport {
   <d:prop>
     <d:displayname/>
     <d:resourcetype/>
+    <d:getetag/>
   </d:prop>
 </d:propfind>
 '''),
@@ -125,11 +142,13 @@ class HttpWebDavTransport implements WebDavTransport {
         final isDirectory = element
             .findAllElements('collection', namespace: '*')
             .isNotEmpty;
+        final etags = element.findAllElements('getetag', namespace: '*');
         resources.add(
           WebDavResource(
             path: '$normalized/$name${isDirectory ? '/' : ''}',
             name: name,
             isDirectory: isDirectory,
+            etag: etags.isEmpty ? null : etags.first.innerText.trim(),
           ),
         );
       }
@@ -140,24 +159,47 @@ class HttpWebDavTransport implements WebDavTransport {
   }
 
   @override
-  Future<Uint8List> read(String remotePath) async {
+  Future<WebDavReadResult> read(String remotePath) async {
     final response = await _send('GET', remotePath);
     if (response.statusCode != 200) {
       throw _responseError('下载 WebDAV 文件', response);
     }
-    return response.bodyBytes;
+    return WebDavReadResult(response.bodyBytes, response.headers['etag']);
   }
 
   @override
-  Future<void> write(String remotePath, List<int> bytes) async {
+  Future<String?> write(
+    String remotePath,
+    List<int> bytes, {
+    String? ifMatch,
+    bool createOnly = false,
+    String contentType = 'application/octet-stream',
+  }) async {
     final response = await _send(
       'PUT',
       remotePath,
-      headers: const {'Content-Type': 'application/json; charset=utf-8'},
+      headers: {
+        'Content-Type': contentType,
+        if (ifMatch != null) 'If-Match': ifMatch,
+        if (createOnly) 'If-None-Match': '*',
+      },
       body: bytes,
     );
     if (!{200, 201, 204}.contains(response.statusCode)) {
       throw _responseError('上传 WebDAV 文件', response);
+    }
+    return response.headers['etag'];
+  }
+
+  @override
+  Future<void> delete(String remotePath, {String? ifMatch}) async {
+    final response = await _send(
+      'DELETE',
+      remotePath,
+      headers: {if (ifMatch != null) 'If-Match': ifMatch},
+    );
+    if (!{200, 202, 204, 404}.contains(response.statusCode)) {
+      throw _responseError('删除 WebDAV 文件', response);
     }
   }
 
