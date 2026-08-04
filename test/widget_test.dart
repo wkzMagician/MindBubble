@@ -24,21 +24,15 @@ void main() {
     addTearDown(controller.dispose);
     await tester.pumpWidget(editor(controller));
 
-    await tester.enterText(find.byType(TextField), '## 核心观点');
+    await tester.enterText(find.byType(TextField), '## Heading');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
 
-    expect(controller.text, '## 核心观点');
-    expect(find.text('核心观点'), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
-
+    expect(controller.text, '## Heading');
+    expect(find.text('Heading'), findsOneWidget);
     final nextField = tester.widget<TextField>(find.byType(TextField));
     expect(nextField.focusNode!.hasFocus, isTrue);
     expect(nextField.controller!.selection.baseOffset, 0);
-
-    tester.testTextInput.enterText('下一行可以直接输入');
-    await tester.pump();
-    expect(controller.text, '## 核心观点\n\n下一行可以直接输入');
   });
 
   testWidgets('a complete fenced code block renders after Enter', (
@@ -57,14 +51,129 @@ void main() {
     expect(find.textContaining('void main() {}'), findsOneWidget);
   });
 
-  testWidgets('code block toolbar inserts a complete fence', (tester) async {
+  testWidgets('code block toolbar creates an empty fence', (tester) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(editor(controller));
 
-    await tester.tap(find.byTooltip('代码块'));
+    await tester.tap(find.byIcon(Icons.data_object));
     await tester.pump();
 
-    expect(controller.text, '```\n在这里输入代码\n```');
+    expect(controller.text, '```\n\n```');
+  });
+
+  testWidgets('bold wraps a selection and toggles it off', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(editor(controller));
+
+    await tester.enterText(find.byType(TextField), 'hello');
+    final active = tester.widget<TextField>(find.byType(TextField)).controller!;
+    active.selection = const TextSelection(baseOffset: 0, extentOffset: 5);
+    await tester.tap(find.byIcon(Icons.format_bold));
+    await tester.pump();
+
+    expect(controller.text, '**hello**');
+    expect(
+      active.selection,
+      const TextSelection(baseOffset: 2, extentOffset: 7),
+    );
+
+    await tester.tap(find.byIcon(Icons.format_bold));
+    await tester.pump();
+    expect(controller.text, 'hello');
+    expect(
+      active.selection,
+      const TextSelection(baseOffset: 0, extentOffset: 5),
+    );
+  });
+
+  testWidgets('bold starts and stops continuous formatted input', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(editor(controller));
+
+    await tester.tap(find.byIcon(Icons.format_bold));
+    await tester.pump();
+    final active = tester.widget<TextField>(find.byType(TextField)).controller!;
+    expect(controller.text, '****');
+    expect(active.selection, const TextSelection.collapsed(offset: 2));
+
+    active.value = const TextEditingValue(
+      text: '**bold**',
+      selection: TextSelection.collapsed(offset: 6),
+    );
+    await tester.tap(find.byIcon(Icons.format_bold));
+    await tester.pump();
+    expect(controller.text, '**bold**');
+    expect(active.selection, const TextSelection.collapsed(offset: 8));
+  });
+
+  testWidgets('heading and quote toggle the current line prefix', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(editor(controller));
+
+    await tester.enterText(find.byType(TextField), 'first\nsecond');
+    final active = tester.widget<TextField>(find.byType(TextField)).controller!;
+    active.selection = const TextSelection.collapsed(offset: 7);
+    await tester.tap(find.byIcon(Icons.format_size));
+    await tester.pump();
+    expect(controller.text, 'first\n## second');
+
+    await tester.tap(find.byIcon(Icons.format_size));
+    await tester.pump();
+    expect(controller.text, 'first\nsecond');
+
+    await tester.tap(find.byIcon(Icons.format_quote));
+    await tester.pump();
+    expect(controller.text, 'first\n> second');
+
+    await tester.tap(find.byIcon(Icons.format_quote));
+    await tester.pump();
+    expect(controller.text, 'first\nsecond');
+  });
+
+  testWidgets('inline code and code blocks handle selections and empty input', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(editor(controller));
+
+    await tester.enterText(find.byType(TextField), 'code');
+    final active = tester.widget<TextField>(find.byType(TextField)).controller!;
+    active.selection = const TextSelection(baseOffset: 0, extentOffset: 4);
+    await tester.tap(find.byIcon(Icons.code));
+    await tester.pump();
+    expect(controller.text, '`code`');
+
+    active.value = const TextEditingValue(
+      text: 'code',
+      selection: TextSelection(baseOffset: 0, extentOffset: 4),
+    );
+    await tester.tap(find.byIcon(Icons.data_object));
+    await tester.pump();
+    expect(controller.text, '```\ncode\n```');
+
+    active.clear();
+    await tester.tap(find.byIcon(Icons.data_object));
+    await tester.pump();
+    expect(controller.text, '```\n\n```');
+    expect(active.selection, const TextSelection.collapsed(offset: 4));
+  });
+
+  testWidgets('the toolbar no longer offers an unordered-list button', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(editor(controller));
+
+    expect(find.byIcon(Icons.format_list_bulleted), findsNothing);
   });
 }

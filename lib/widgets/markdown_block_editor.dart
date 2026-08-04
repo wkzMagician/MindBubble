@@ -146,27 +146,22 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
         _toolButton(
           context.l10n.heading,
           Icons.format_size,
-          () => _insertMarkdown('## ', '', context.l10n.subheading),
+          () => _toggleCurrentLinePrefix('## '),
         ),
         _toolButton(
           context.l10n.bold,
           Icons.format_bold,
-          () => _insertMarkdown('**', '**', context.l10n.emphasis),
-        ),
-        _toolButton(
-          context.l10n.list,
-          Icons.format_list_bulleted,
-          () => _insertMarkdown('- ', '', context.l10n.listItem),
+          () => _toggleInlineFormat('**'),
         ),
         _toolButton(
           context.l10n.quote,
           Icons.format_quote,
-          () => _insertMarkdown('> ', '', context.l10n.quote),
+          () => _toggleCurrentLinePrefix('> '),
         ),
         _toolButton(
           context.l10n.inlineCode,
           Icons.code,
-          () => _insertMarkdown('`', '`', context.l10n.code),
+          () => _toggleInlineFormat('`'),
         ),
         _toolButton(
           context.l10n.codeBlock,
@@ -367,43 +362,160 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
         icon: Icon(icon, size: 18),
       );
 
-  void _insertMarkdown(String prefix, String suffix, String placeholder) {
+  /// Applies an inline Markdown delimiter to a selection, or keeps the cursor
+  /// between a delimiter pair so subsequent typing receives that formatting.
+  void _toggleInlineFormat(String delimiter) {
     final selection = _activeController.selection;
-    final hasSelection = selection.isValid && selection.start != selection.end;
+    final hasSelection = selection.isValid && !selection.isCollapsed;
     final start = selection.isValid
         ? selection.start
         : _activeController.text.length;
     final end = selection.isValid ? selection.end : start;
-    final selected = hasSelection
-        ? _activeController.text.substring(start, end)
-        : placeholder;
-    final replacement = '$prefix$selected$suffix';
+
+    if (hasSelection) {
+      final isWrapped =
+          start >= delimiter.length &&
+          _activeController.text.substring(start - delimiter.length, start) ==
+              delimiter &&
+          _activeController.text.startsWith(delimiter, end);
+      if (isWrapped) {
+        _replaceActiveRange(
+          start - delimiter.length,
+          end + delimiter.length,
+          _activeController.text.substring(start, end),
+          TextSelection(
+            baseOffset: start - delimiter.length,
+            extentOffset: end - delimiter.length,
+          ),
+        );
+      } else {
+        _replaceActiveRange(
+          start,
+          end,
+          '$delimiter${_activeController.text.substring(start, end)}$delimiter',
+          TextSelection(
+            baseOffset: start + delimiter.length,
+            extentOffset: end + delimiter.length,
+          ),
+        );
+      }
+      return;
+    }
+
+    // While typing formatted text the cursor stays immediately before the
+    // closing delimiter, so a second tap simply moves beyond it.
+    if (_activeController.text.startsWith(delimiter, start) &&
+        _hasOpeningDelimiterBefore(start, delimiter)) {
+      _activeController.selection = TextSelection.collapsed(
+        offset: start + delimiter.length,
+      );
+      _focusNode.requestFocus();
+      return;
+    }
+
+    _replaceActiveRange(
+      start,
+      end,
+      '$delimiter$delimiter',
+      TextSelection.collapsed(offset: start + delimiter.length),
+    );
+  }
+
+  bool _hasOpeningDelimiterBefore(int cursor, String delimiter) {
+    if (cursor < delimiter.length) return false;
+    final opening = _activeController.text.lastIndexOf(delimiter, cursor - 1);
+    return opening >= 0 &&
+        opening + delimiter.length <= cursor &&
+        !_activeController.text
+            .substring(opening + delimiter.length, cursor)
+            .contains(delimiter);
+  }
+
+  void _toggleCurrentLinePrefix(String prefix) {
+    final selection = _activeController.selection;
+    final cursor = selection.isValid
+        ? selection.start
+        : _activeController.text.length;
+    final lineStart = _activeController.text.lastIndexOf('\n', cursor - 1) + 1;
+    final lineEnd = _activeController.text.indexOf('\n', cursor);
+    final line = _activeController.text.substring(
+      lineStart,
+      lineEnd == -1 ? _activeController.text.length : lineEnd,
+    );
+    final existing = line.startsWith(prefix)
+        ? prefix.length
+        : prefix == '## '
+        ? RegExp(r'^#{1,6}\s+').firstMatch(line)?.end
+        : null;
+
+    if (existing != null) {
+      final adjustedStart = selection.isValid
+          ? (selection.start - existing).clamp(
+              lineStart,
+              _activeController.text.length,
+            )
+          : lineStart;
+      final adjustedEnd = selection.isValid
+          ? (selection.end - existing).clamp(
+              lineStart,
+              _activeController.text.length,
+            )
+          : adjustedStart;
+      _replaceActiveRange(
+        lineStart,
+        lineStart + existing,
+        '',
+        TextSelection(baseOffset: adjustedStart, extentOffset: adjustedEnd),
+      );
+    } else {
+      final adjustedStart = selection.isValid
+          ? selection.start + prefix.length
+          : lineStart + prefix.length;
+      final adjustedEnd = selection.isValid
+          ? selection.end + prefix.length
+          : adjustedStart;
+      _replaceActiveRange(
+        lineStart,
+        lineStart,
+        prefix,
+        TextSelection(baseOffset: adjustedStart, extentOffset: adjustedEnd),
+      );
+    }
+  }
+
+  void _replaceActiveRange(
+    int start,
+    int end,
+    String replacement,
+    TextSelection selection,
+  ) {
     _activeController.value = TextEditingValue(
       text: _activeController.text.replaceRange(start, end, replacement),
-      selection: TextSelection.collapsed(offset: start + replacement.length),
+      selection: selection,
     );
     _focusNode.requestFocus();
   }
 
   void _insertCodeBlock() {
     final selection = _activeController.selection;
-    final hasSelection = selection.isValid && selection.start != selection.end;
+    final hasSelection = selection.isValid && !selection.isCollapsed;
     final start = selection.isValid
         ? selection.start
         : _activeController.text.length;
     final end = selection.isValid ? selection.end : start;
     final selected = hasSelection
         ? _activeController.text.substring(start, end)
-        : context.l10n.codePlaceholder;
+        : '';
     final replacement = '```\n$selected\n```';
-    _activeController.value = TextEditingValue(
-      text: _activeController.text.replaceRange(start, end, replacement),
-      selection: TextSelection(
+    _replaceActiveRange(
+      start,
+      end,
+      replacement,
+      TextSelection(
         baseOffset: start + 4,
         extentOffset: start + 4 + selected.length,
       ),
     );
-    _focusNode.requestFocus();
   }
 
   String? _nextListPrefix(String raw) {
