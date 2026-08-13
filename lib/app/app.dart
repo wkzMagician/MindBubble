@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/ocean/ocean_page.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/l10n.dart';
-import '../services/bubble_document_store.dart';
 import '../services/locale_service.dart';
 import '../services/sync_service.dart';
 
@@ -18,51 +15,20 @@ class MindBubbleApp extends ConsumerStatefulWidget {
   ConsumerState<MindBubbleApp> createState() => _MindBubbleAppState();
 }
 
-class _MindBubbleAppState extends ConsumerState<MindBubbleApp>
-    with WidgetsBindingObserver {
-  Timer? _periodicSync;
+class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
   late Future<void> _initialSync;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    ref.listenManual(documentStoreRevisionProvider, (_, next) {
-      if (next.hasValue) ref.read(syncServiceProvider).scheduleSync();
-    });
-    _initialSync = _syncIfConfigured();
-    _periodicSync = Timer.periodic(
-      const Duration(minutes: 15),
-      (_) => _runAutomaticSync(),
-    );
+    _initialSync = _initializeSyncFacade();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _runAutomaticSync();
-  }
-
-  Future<void> _syncIfConfigured() async {
-    final service = ref.read(syncServiceProvider);
-    final config = await service.loadConfig();
-    if (config != null) await service.syncNow();
-  }
-
-  void _runAutomaticSync() {
-    unawaited(
-      _syncIfConfigured().catchError((Object _) {
-        // Background failures are retried at the next local change, resume, or
-        // periodic interval. Explicit setup displays errors to the user.
-      }),
-    );
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _periodicSync?.cancel();
-    super.dispose();
-  }
+  // Dartloom owns startup, resume, connectivity, polling, retry, and
+  // local-write triggers. The app only performs compatibility migrations and
+  // exposes the configured profile to the existing UI.
+  Future<void> _initializeSyncFacade() =>
+      ref.read(syncServiceProvider).loadConfig();
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +95,7 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp>
           return _BootstrapResult(
             error: snapshot.error,
             onRetry: () {
-              setState(() => _initialSync = _syncIfConfigured());
+              setState(() => _initialSync = _initializeSyncFacade());
             },
           );
         },

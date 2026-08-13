@@ -1,7 +1,8 @@
 import 'dart:io';
 
+import 'package:dartloom_autostart/dartloom_autostart.dart';
+import 'package:dartloom_runtime/dartloom_runtime.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:launch_at_startup/launch_at_startup.dart';
 
 final startupServiceProvider = Provider<StartupService>(
   (_) => StartupService(),
@@ -18,20 +19,19 @@ class StartupService {
       : 'Windows';
 
   void initialize() {
-    if (!isSupported) return;
-    launchAtStartup.setup(
-      appName: 'MindBubble',
-      appPath: Platform.resolvedExecutable,
-      packageName: 'dev.mindbubble.desktop',
-    );
+    // Dartloom initializes the platform adapter and owns its lifecycle.
   }
 
   Future<bool> isEnabled() =>
-      isSupported ? launchAtStartup.isEnabled() : Future.value(false);
+      Dartloom.maybeGet<AutostartService>()?.isEnabled() ?? Future.value(false);
 
-  Future<void> setEnabled(bool enabled) => !isSupported
-      ? Future.value()
-      : enabled
-      ? launchAtStartup.enable()
-      : launchAtStartup.disable();
+  Future<void> setEnabled(bool enabled) async {
+    final service = Dartloom.maybeGet<AutostartService>();
+    if (service == null) return;
+    if (enabled) {
+      await service.enable();
+    } else {
+      await service.disable();
+    }
+  }
 }

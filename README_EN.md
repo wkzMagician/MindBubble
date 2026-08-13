@@ -45,6 +45,7 @@ Replace the placeholder paths below with your own paths:
 
 ```powershell
 $env:MIND_BUBBLE_DIR = "/path/to/Documents/MindBubble/bubbles"
+$env:MIND_BUBBLE_JOURNAL_DIR = "/path/to/AppSupport/MindBubble/mcp-journal"
 python /path/to/your/project/tools/mind_bubble_mcp.py
 ```
 
@@ -52,7 +53,7 @@ The server waits for JSON-RPC requests from an MCP client; do not type requests 
 
 ### Configure an Agent
 
-Use [the example](tools/mind-bubble.mcp.json) as a template:
+Set both `MIND_BUBBLE_DIR` and `MIND_BUBBLE_JOURNAL_DIR` to absolute paths resolved from the installed app's Documents and application-support locations. Use [the example](tools/mind-bubble.mcp.json) as a template:
 
 ```json
 {
@@ -61,7 +62,8 @@ Use [the example](tools/mind-bubble.mcp.json) as a template:
       "command": "python",
       "args": ["/path/to/your/project/tools/mind_bubble_mcp.py"],
       "env": {
-        "MIND_BUBBLE_DIR": "/path/to/Documents/MindBubble/bubbles"
+        "MIND_BUBBLE_DIR": "/path/to/Documents/MindBubble/bubbles",
+        "MIND_BUBBLE_JOURNAL_DIR": "/path/to/AppSupport/MindBubble/mcp-journal"
       }
     }
   }

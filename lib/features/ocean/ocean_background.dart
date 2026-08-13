@@ -8,10 +8,8 @@ class OceanBackground extends StatelessWidget {
   final double progress;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: _TopDownOceanPainter(progress),
-        size: Size.infinite,
-      );
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _TopDownOceanPainter(progress), size: Size.infinite);
 }
 
 class _TopDownOceanPainter extends CustomPainter {
@@ -58,7 +56,8 @@ class _TopDownOceanPainter extends CustomPainter {
       final path = Path();
       for (double x = -40; x <= size.width + 40; x += 14) {
         final baseY = row * 125 + 30.0;
-        final y = baseY +
+        final y =
+            baseY +
             math.sin(x / 70 + time + row * .8) * 15 +
             math.sin(x / 31 - time * .7) * 5;
         if (x == -40) {

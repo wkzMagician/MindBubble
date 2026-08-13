@@ -8,7 +8,6 @@ import '../services/bubble_document_store.dart';
 import '../services/daily_selection_cache.dart';
 import '../services/device_identity_service.dart';
 import '../services/sync_service.dart';
-import '../services/sync_state_store.dart';
 
 final bubbleRevisionProvider = StateProvider<int>((_) => 0);
 
@@ -17,7 +16,6 @@ final bubbleRepositoryProvider = Provider<BubbleRepository>((ref) {
     ref.watch(bubbleDocumentStoreProvider),
     ref.watch(dailySelectionCacheProvider),
     ref.watch(deviceIdentityProvider),
-    ref.watch(syncStateStoreProvider),
     () {
       ref.read(bubbleRevisionProvider.notifier).state++;
       ref.read(syncServiceProvider).scheduleSync();
@@ -30,14 +28,12 @@ class BubbleRepository {
     this._store,
     this._dailyCache,
     this._identity,
-    this._syncState,
     this._changed,
   );
 
   final BubbleDocumentStore _store;
   final DailySelectionCache _dailyCache;
   final DeviceIdentity _identity;
-  final SyncStateStore _syncState;
   final void Function() _changed;
 
   Future<List<Bubble>> getAll({
@@ -56,25 +52,11 @@ class BubbleRepository {
 
   Future<void> save(Bubble bubble) async {
     await _store.save(bubble);
-    if (_syncState.pendingDeletes.remove(bubble.id)) {
-      await _store.clearDeleteIntent(bubble.id);
-      await _syncState.save();
-    }
     _changed();
   }
 
   Future<void> delete(String id) async {
-    await _store.markDeleteIntent(id);
-    _syncState.pendingDeletes.add(id);
-    await _syncState.save();
-    try {
-      await _store.delete(id);
-    } catch (_) {
-      _syncState.pendingDeletes.remove(id);
-      await _store.clearDeleteIntent(id);
-      await _syncState.save();
-      rethrow;
-    }
+    await _store.delete(id);
     _changed();
   }
 

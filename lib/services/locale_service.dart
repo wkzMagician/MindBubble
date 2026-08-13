@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:dartloom_runtime/dartloom_runtime.dart';
+import 'package:dartloom_settings/dartloom_settings.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 
 final localeControllerProvider =
     StateNotifierProvider<LocaleController, Locale?>(
@@ -15,9 +14,7 @@ class LocaleController extends StateNotifier<Locale?> {
   LocaleController() : super(null);
 
   Future<void> load() async {
-    final file = await _preferenceFile();
-    if (!await file.exists()) return;
-    final value = (await file.readAsString()).trim();
+    final value = await _settings.read('locale') as String?;
     state = switch (value) {
       'zh' => const Locale('zh'),
       'en' => const Locale('en'),
@@ -31,13 +28,8 @@ class LocaleController extends StateNotifier<Locale?> {
       'en' => const Locale('en'),
       _ => null,
     };
-    final file = await _preferenceFile();
-    await file.parent.create(recursive: true);
-    await file.writeAsString(value, flush: true);
+    await _settings.write('locale', value);
   }
 
-  Future<File> _preferenceFile() async {
-    final directory = await getApplicationSupportDirectory();
-    return File(path.join(directory.path, 'locale_preference.txt'));
-  }
+  SettingsStore get _settings => Dartloom.get<SettingsStore>();
 }

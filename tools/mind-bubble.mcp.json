@@ -1,1 +1,1 @@
-{"mcpServers":{"mind-bubble":{"command":"python","args":["/absolute/path/to/MindBubble/tools/mind_bubble_mcp.py"],"env":{"MIND_BUBBLE_DIR":"/absolute/path/to/Documents/MindBubble/bubbles"}}}}
+{"mcpServers":{"mind-bubble":{"command":"python","args":["/absolute/path/to/MindBubble/tools/mind_bubble_mcp.py"],"env":{"MIND_BUBBLE_DIR":"/absolute/path/to/Documents/MindBubble/bubbles","MIND_BUBBLE_JOURNAL_DIR":"/absolute/path/to/AppSupport/MindBubble/mcp-journal"}}}}

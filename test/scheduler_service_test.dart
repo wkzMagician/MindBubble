@@ -9,7 +9,6 @@ import 'package:mind_bubble/services/bubble_document_store.dart';
 import 'package:mind_bubble/services/daily_selection_cache.dart';
 import 'package:mind_bubble/services/device_identity_service.dart';
 import 'package:mind_bubble/services/scheduler_service.dart';
-import 'package:mind_bubble/services/sync_state_store.dart';
 
 void main() {
   final now = DateTime(2026, 7, 27, 12);
@@ -96,7 +95,6 @@ void main() {
       ),
       cache,
       const DeviceIdentity('device-a'),
-      SyncStateStore.forTesting(File('${support.path}/sync-state.json')),
       () {},
     );
     await cache.write(

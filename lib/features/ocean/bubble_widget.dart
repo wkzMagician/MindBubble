@@ -71,8 +71,9 @@ class _OceanBubbleState extends State<OceanBubble> {
                       stops: const [0, .43, 1],
                     ),
                     border: Border.all(
-                      color:
-                          Colors.white.withValues(alpha: _hovered ? .8 : .46),
+                      color: Colors.white.withValues(
+                        alpha: _hovered ? .8 : .46,
+                      ),
                       width: _hovered ? 2.2 : 1.3,
                     ),
                     boxShadow: [
@@ -109,16 +110,19 @@ class _OceanBubbleState extends State<OceanBubble> {
                           maxLines: 4,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontSize: widget.size * .105,
-                            fontWeight: FontWeight.w700,
-                            height: 1.18,
-                            color: Colors.white,
-                            shadows: const [
-                              Shadow(color: Color(0x66000000), blurRadius: 6),
-                            ],
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontSize: widget.size * .105,
+                                fontWeight: FontWeight.w700,
+                                height: 1.18,
+                                color: Colors.white,
+                                shadows: const [
+                                  Shadow(
+                                    color: Color(0x66000000),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
                         ),
                       ),
                     ],

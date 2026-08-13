@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:dartloom_storage/dartloom_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -124,11 +126,13 @@ class BubbleDocumentStore {
     required this.root,
     required this.supportRoot,
     required this.deviceIdentity,
+    this.replicaStore,
   });
 
   final Directory root;
   final Directory supportRoot;
   final DeviceIdentity deviceIdentity;
+  final ReplicaStore? replicaStore;
   final _revisions = StreamController<int>.broadcast();
   final List<DocumentStoreIssue> _issues = [];
   StreamSubscription<FileSystemEvent>? _watcher;
@@ -139,27 +143,30 @@ class BubbleDocumentStore {
     required Directory root,
     required Directory supportRoot,
     required DeviceIdentity deviceIdentity,
+    ReplicaStore? replicaStore,
   }) => BubbleDocumentStore._(
     root: root,
     supportRoot: supportRoot,
     deviceIdentity: deviceIdentity,
+    replicaStore: replicaStore,
   );
 
   Stream<int> get revisions => _revisions.stream;
   List<DocumentStoreIssue> get issues => List.unmodifiable(_issues);
-  Directory get pendingDeleteRoot =>
-      Directory(path.join(root.parent.path, '.sync', 'pending-deletes'));
 
-  static Future<BubbleDocumentStore> open(DeviceIdentity identity) async {
+  static Future<BubbleDocumentStore> open(
+    DeviceIdentity identity, {
+    ReplicaStore? replicaStore,
+  }) async {
     final documents = await getApplicationDocumentsDirectory();
     final support = await getApplicationSupportDirectory();
     final store = BubbleDocumentStore._(
       root: Directory(path.join(documents.path, 'MindBubble', 'bubbles')),
       supportRoot: Directory(path.join(support.path, 'MindBubble')),
       deviceIdentity: identity,
+      replicaStore: replicaStore,
     );
     await store.root.create(recursive: true);
-    await store.pendingDeleteRoot.create(recursive: true);
     await store.supportRoot.create(recursive: true);
     await store._migrateLegacyDatabase(documents);
     store._watcher = store.root.watch().listen((_) {
@@ -172,7 +179,10 @@ class BubbleDocumentStore {
     return store;
   }
 
-  File fileFor(String id) => File(path.join(root.path, '$id.md'));
+  File fileFor(String id) {
+    _documentKey(id);
+    return File(path.join(root.path, '$id.md'));
+  }
 
   Future<Map<String, StoredBubbleDocument>> readAllDocuments() async {
     _issues.clear();
@@ -219,6 +229,15 @@ class BubbleDocumentStore {
 
   Future<void> writeRaw(String id, String raw, {bool notify = true}) async {
     BubbleDocumentCodec.decode(raw, expectedId: id);
+    final replica = replicaStore;
+    if (replica != null) {
+      await replica.writeBytes(
+        _documentKey(id),
+        Uint8List.fromList(utf8.encode(raw)),
+      );
+      if (notify) notifyChanged();
+      return;
+    }
     final target = fileFor(id);
     final temporary = File('${target.path}.tmp');
     await temporary.writeAsString(raw, flush: true);
@@ -232,30 +251,27 @@ class BubbleDocumentStore {
   }
 
   Future<void> delete(String id, {bool notify = true}) async {
+    final replica = replicaStore;
+    if (replica != null) {
+      await replica.delete(_documentKey(id));
+      if (notify) notifyChanged();
+      return;
+    }
     final file = fileFor(id);
     if (await file.exists()) await file.delete();
     if (notify) notifyChanged();
   }
 
-  Future<void> markDeleteIntent(String id) async {
-    await pendingDeleteRoot.create(recursive: true);
-    await File(
-      path.join(pendingDeleteRoot.path, id),
-    ).writeAsString(DateTime.now().toUtc().toIso8601String(), flush: true);
-  }
-
-  Future<void> clearDeleteIntent(String id) async {
-    final marker = File(path.join(pendingDeleteRoot.path, id));
-    if (await marker.exists()) await marker.delete();
-  }
-
-  Future<Set<String>> readDeleteIntents() async {
-    if (!await pendingDeleteRoot.exists()) return {};
-    return pendingDeleteRoot
-        .list()
-        .where((entity) => entity is File)
-        .map((entity) => path.basename(entity.path))
-        .toSet();
+  String _documentKey(String id) {
+    if (id.isEmpty ||
+        id == '.' ||
+        id == '..' ||
+        path.isAbsolute(id) ||
+        id.contains('/') ||
+        id.contains('\\')) {
+      throw ArgumentError.value(id, 'id', 'Invalid MindBubble document id.');
+    }
+    return '$id.md';
   }
 
   void notifyChanged() {

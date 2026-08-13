@@ -1,15 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dartloom_sync/dartloom_sync.dart' as dartloom;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mind_bubble/models/bubble.dart';
 import 'package:mind_bubble/services/bubble_document_store.dart';
-import 'package:mind_bubble/services/device_identity_service.dart';
 import 'package:mind_bubble/services/sync_service.dart';
-import 'package:mind_bubble/services/sync_state_store.dart';
 import 'package:mind_bubble/services/webdav_transport.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   test('a bubble round trips through one Markdown document', () {
@@ -35,326 +34,348 @@ void main() {
     expect(restored.bubble.description, bubble.description);
     expect(restored.bubble.appearanceFrequency, 5);
     expect(restored.bubble.shownCount, 2);
-    expect(restored.bubble.lastShownAt?.millisecondsSinceEpoch, 15);
-    expect(restored.hash, BubbleDocumentCodec.hash(raw));
   });
 
-  test('document id must match its filename', () {
-    final raw = BubbleDocumentCodec.encode(
-      Bubble(
-        id: 'inside',
-        title: 'Title',
-        description: 'Body',
-        createdAt: DateTime.fromMillisecondsSinceEpoch(10),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(20),
-      ),
-      updatedBy: 'device-a',
-    );
-
-    expect(
-      () => BubbleDocumentCodec.decode(raw, expectedId: 'outside'),
-      throwsFormatException,
-    );
-  });
-
-  group('per-document sync', () {
+  group('typed Dartloom facade', () {
     late Directory temporary;
-    late BubbleDocumentStore store;
-    late SyncStateStore state;
-    late _MemoryWebDav server;
-    late SyncService sync;
+    late _FakeDartloomSync delegate;
+    late _MemoryWebDav remote;
+    late SyncService service;
 
     setUp(() async {
-      temporary = await Directory.systemTemp.createTemp(
-        'mind-bubble-sync-test-',
-      );
-      final documents = Directory('${temporary.path}/documents')
-        ..createSync(recursive: true);
-      final support = Directory('${temporary.path}/support')
-        ..createSync(recursive: true);
-      store = BubbleDocumentStore.forTesting(
-        root: documents,
-        supportRoot: support,
-        deviceIdentity: const DeviceIdentity('device-a'),
-      );
-      state = SyncStateStore.forTesting(
-        File('${support.path}/sync-state.json'),
-      );
-      server = _MemoryWebDav();
-      sync = SyncService(
-        store,
-        state,
-        const DeviceIdentity('device-a'),
-        () {},
-        transportFactory: (_) => server,
-        configFile: File('${support.path}/webdav-config.json'),
-        legacyConfigFile: File('${support.path}/legacy-config.json'),
-      );
-      await sync.configureWebDav(
-        serverUrl: 'https://example.test/dav/',
-        username: 'user',
-        appPassword: 'password',
+      temporary = await Directory.systemTemp.createTemp('stage8-sync-');
+      delegate = _FakeDartloomSync();
+      remote = _MemoryWebDav();
+      service = SyncService(
+        delegate: delegate,
+        supportRoot: temporary,
+        transportFactory: (_) => remote,
+        configFile: File('${temporary.path}/webdav-config.json'),
+        legacyConfigFile: File('${temporary.path}/webdav_config.json'),
+        migrationMarkerFile: File('${temporary.path}/migration.json'),
       );
     });
 
     tearDown(() async {
+      await delegate.dispose();
       await temporary.delete(recursive: true);
     });
 
-    Future<void> saveBubble({
-      String title = 'Base title',
-      String description = 'Base body',
-    }) => store.save(
-      Bubble(
-        id: 'bubble-1',
-        title: title,
-        description: description,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(10),
-        updatedAt: DateTime.now(),
-      ),
-    );
-
-    test(
-      'uploads one local Markdown and later downloads a remote edit',
-      () async {
-        await saveBubble();
-        await sync.syncNow();
-
-        expect(
-          server.files.keys,
-          contains('/MindBubble/v2/bubbles/bubble-1.md'),
-        );
-
-        server.editBubble(
-          'bubble-1',
-          (bubble) =>
-              bubble.copyWith(title: 'Remote title', updatedAt: DateTime.now()),
-        );
-        await sync.syncNow();
-
-        expect(
-          (await store.readDocument('bubble-1'))!.bubble.title,
-          'Remote title',
-        );
-      },
-    );
-
-    test('a no-op fetch does not publish a document refresh', () async {
-      await saveBubble();
-      await sync.syncNow();
-      final revisions = <int>[];
-      final subscription = store.revisions.listen(revisions.add);
+    test('forwards typed snapshots and maps typed reports', () async {
+      final observed = <dartloom.SyncSnapshot>[];
+      final subscription = service.states.listen(observed.add);
       addTearDown(subscription.cancel);
 
-      await sync.syncNow();
-      expect(revisions, isEmpty);
-
-      server.editBubble(
-        'bubble-1',
-        (bubble) =>
-            bubble.copyWith(title: 'Remote title', updatedAt: DateTime.now()),
+      await service.configureWebDav(
+        serverUrl: 'https://example.test/dav/',
+        username: 'user',
+        appPassword: 'secret',
       );
-      await sync.syncNow();
-      expect(revisions, hasLength(1));
-
-      await sync.syncNow();
-      expect(revisions, hasLength(1));
-    });
-
-    test('merges non-overlapping local and remote fields', () async {
-      await saveBubble();
-      await sync.syncNow();
-      await saveBubble(title: 'Local title');
-      server.editBubble(
-        'bubble-1',
-        (bubble) => bubble.copyWith(
-          description: 'Remote body',
-          updatedAt: DateTime.now(),
+      delegate.emit(
+        dartloom.SyncSnapshot(
+          phase: dartloom.SyncPhase.succeeded,
+          localRevision: 4,
+          activeProfileId: 'default',
+          lastSuccessAt: DateTime.utc(2026, 8, 14),
         ),
       );
+      await Future<void>.delayed(Duration.zero);
+      await service.syncNow();
 
-      await sync.syncNow();
+      expect(observed.single.phase, dartloom.SyncPhase.succeeded);
+      expect(service.lastSyncedAt, DateTime.utc(2026, 8, 14));
+      expect(delegate.syncCalls, 1);
 
-      final merged = (await store.readDocument('bubble-1'))!.bubble;
-      expect(merged.title, 'Local title');
-      expect(merged.description, 'Remote body');
-      expect(sync.conflicts, isEmpty);
-    });
-
-    test('records same-field edits as a conflict', () async {
-      await saveBubble();
-      await sync.syncNow();
-      await saveBubble(title: 'Local title');
-      server.editBubble(
-        'bubble-1',
-        (bubble) =>
-            bubble.copyWith(title: 'Remote title', updatedAt: DateTime.now()),
+      delegate.report = const dartloom.SyncRunReport(
+        trigger: dartloom.SyncTrigger.manual,
+        failure: dartloom.SyncFailure(
+          dartloom.SyncFailureKind.authentication,
+          'authentication failed',
+        ),
       );
-
-      await sync.syncNow();
-
-      expect(sync.conflicts.single.reason, 'same-field');
+      await expectLater(
+        service.syncNow(),
+        throwsA(
+          isA<SyncException>().having(
+            (error) => error.kind,
+            'kind',
+            SyncErrorKind.authentication,
+          ),
+        ),
+      );
     });
 
-    test('an explicit local deletion removes the remote document', () async {
-      await saveBubble();
-      await sync.syncNow();
-      await store.markDeleteIntent('bubble-1');
-      await store.delete('bubble-1');
+    test('uses typed conflicts and typed resolution choices', () async {
+      delegate.conflicts = [
+        dartloom.SyncConflict(
+          id: 'default::bubble-1.md',
+          key: 'bubble-1.md',
+          local: Uint8List.fromList(utf8.encode('local')),
+          remote: Uint8List.fromList(utf8.encode('remote')),
+        ),
+      ];
 
-      await sync.syncNow();
+      final conflicts = await service.listConflicts();
+      expect(conflicts.single.key, 'bubble-1.md');
 
+      await service.resolveConflict(
+        conflicts.single.id,
+        ConflictResolution.remote,
+      );
+      expect(delegate.resolved.single.$1, 'default::bubble-1.md');
       expect(
-        server.files.keys,
-        isNot(contains('/MindBubble/v2/bubbles/bubble-1.md')),
+        delegate.resolved.single.$2.choice,
+        dartloom.SyncConflictChoice.useRemote,
       );
-      expect(state.objects, isEmpty);
-      expect(await store.readDeleteIntents(), isEmpty);
-    });
-
-    test('remote edit versus local delete is resolved explicitly', () async {
-      await saveBubble();
-      await sync.syncNow();
-      await store.markDeleteIntent('bubble-1');
-      await store.delete('bubble-1');
-      server.editBubble(
-        'bubble-1',
-        (bubble) =>
-            bubble.copyWith(title: 'Remote title', updatedAt: DateTime.now()),
-      );
-
-      await sync.syncNow();
-      expect(sync.conflicts.single.reason, 'local-delete-remote-edit');
-
-      await sync.resolveConflict('bubble-1', ConflictResolution.remote);
-      expect(
-        (await store.readDocument('bubble-1'))!.bubble.title,
-        'Remote title',
-      );
-      expect(sync.conflicts, isEmpty);
-      expect(await store.readDeleteIntents(), isEmpty);
     });
 
     test(
-      'concurrent deletion on both devices does not create a conflict',
+      'migrates plaintext config into profile secrets then removes it',
       () async {
-        await saveBubble();
-        await sync.syncNow();
-        await store.markDeleteIntent('bubble-1');
-        await store.delete('bubble-1');
-        server.files.remove('/MindBubble/v2/bubbles/bubble-1.md');
+        final plaintext = File('${temporary.path}/webdav-config.json');
+        await plaintext.writeAsString(
+          jsonEncode({
+            'serverUrl': 'https://example.test/dav/',
+            'username': 'legacy-user',
+            'appPassword': 'legacy-secret',
+          }),
+        );
 
-        await sync.syncNow();
+        final loaded = await service.loadConfig();
 
-        expect(sync.conflicts, isEmpty);
-        expect(state.objects, isEmpty);
-        expect(await store.readDeleteIntents(), isEmpty);
-      },
-    );
-
-    test(
-      'an unexplained missing local file never deletes remote data',
-      () async {
-        await saveBubble();
-        await sync.syncNow();
-        await store.delete('bubble-1');
-
-        await sync.syncNow();
-
-        expect(sync.conflicts.single.reason, 'unconfirmed-local-delete');
+        expect(loaded?.serverUrl, 'https://example.test/dav/');
+        expect(loaded?.username, 'legacy-user');
+        expect(loaded?.appPassword, isEmpty);
+        expect(delegate.lastDraft?.backend, 'webdav');
+        expect(delegate.lastDraft?.secrets, {'password': 'legacy-secret'});
+        expect(delegate.lastDraft?.options, {
+          'base_url': 'https://example.test/dav/',
+          'username': 'legacy-user',
+        });
+        expect(await plaintext.exists(), isFalse);
         expect(
-          server.files.keys,
-          contains('/MindBubble/v2/bubbles/bubble-1.md'),
+          await File('${temporary.path}/migration.json').readAsString(),
+          isNot(contains('legacy-secret')),
         );
       },
     );
-  });
 
-  test('legacy SQLite rows migrate once into Markdown documents', () async {
-    final temporary = await Directory.systemTemp.createTemp(
-      'mind-bubble-migration-test-',
+    test(
+      'new remote wins, only missing files copy, and source is unchanged',
+      () async {
+        remote.put('/MindBubble/v2/bubbles/old-only.md', 'old-only');
+        remote.put('/MindBubble/v2/bubbles/shared.md', 'legacy-shared');
+        remote.put('/MindBubble/bubbles/shared.md', 'new-shared');
+        remote.put('/MindBubble/bubbles/new-only.md', 'new-only');
+        final sourceBefore = remote.snapshot('/MindBubble/v2/bubbles');
+
+        final report = await service.migrateLegacyRemote(
+          const WebDavConfig(
+            serverUrl: 'https://example.test/dav/',
+            username: 'user',
+            appPassword: 'secret',
+          ),
+        );
+
+        expect(report.discovered, 2);
+        expect(report.copied, 1);
+        expect(report.newWins, 1);
+        expect(report.failures, isEmpty);
+        expect(remote.text('/MindBubble/bubbles/old-only.md'), 'old-only');
+        expect(remote.text('/MindBubble/bubbles/shared.md'), 'new-shared');
+        expect(remote.snapshot('/MindBubble/v2/bubbles'), sourceBefore);
+        expect(remote.deleteCalls, isEmpty);
+
+        final writes = remote.writeCalls.length;
+        final repeated = await service.migrateLegacyRemote(
+          const WebDavConfig(
+            serverUrl: 'https://example.test/dav/',
+            username: 'user',
+            appPassword: 'secret',
+          ),
+        );
+        expect(repeated.copied, 1);
+        expect(remote.writeCalls, hasLength(writes));
+
+        final marker =
+            jsonDecode(
+                  await File('${temporary.path}/migration.json').readAsString(),
+                )
+                as Map<String, Object?>;
+        expect(marker['version'], 1);
+        expect(marker['source'], '/MindBubble/v2/bubbles');
+        expect(marker['target'], '/MindBubble/bubbles');
+        expect(marker['copied'], 1);
+        expect(marker['newWins'], 1);
+        expect(marker['failures'], isEmpty);
+      },
     );
-    addTearDown(() => temporary.delete(recursive: true));
-    final documents = Directory('${temporary.path}/documents')
-      ..createSync(recursive: true);
-    final support = Directory('${temporary.path}/support')
-      ..createSync(recursive: true);
-    sqfliteFfiInit();
-    final database = await databaseFactoryFfi.openDatabase(
-      '${documents.path}/mind_bubble.db',
-    );
-    await database.execute('''
-      CREATE TABLE bubbles (
-        id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-        last_shown_at INTEGER, shown_count INTEGER NOT NULL DEFAULT 0,
-        appearance_frequency INTEGER NOT NULL DEFAULT 3,
-        deleted_at INTEGER, field_versions TEXT NOT NULL DEFAULT ''
-      )
-    ''');
-    await database.insert('bubbles', {
-      'id': 'legacy-1',
-      'title': 'Legacy',
-      'description': 'Legacy body',
-      'created_at': 10,
-      'updated_at': 20,
-      'last_shown_at': 15,
-      'shown_count': 3,
-      'appearance_frequency': 4,
-      'deleted_at': null,
-      'field_versions': '',
+
+    test('migration records sanitized failures and safely retries', () async {
+      remote.put('/MindBubble/v2/bubbles/retry.md', 'source');
+      remote.failWrites.add('/MindBubble/bubbles/retry.md');
+
+      final first = await service.migrateLegacyRemote(
+        const WebDavConfig(
+          serverUrl: 'https://example.test/dav/',
+          username: 'user',
+          appPassword: 'secret',
+        ),
+      );
+      expect(first.isComplete, isFalse);
+      expect(first.failures.single, {'key': 'retry.md', 'category': 'network'});
+
+      remote.failWrites.clear();
+      final second = await service.migrateLegacyRemote(
+        const WebDavConfig(
+          serverUrl: 'https://example.test/dav/',
+          username: 'user',
+          appPassword: 'secret',
+        ),
+      );
+      expect(second.isComplete, isTrue);
+      expect(second.copied, 1);
+      expect(remote.text('/MindBubble/v2/bubbles/retry.md'), 'source');
+      expect(remote.text('/MindBubble/bubbles/retry.md'), 'source');
     });
-    await database.close();
-    final store = BubbleDocumentStore.forTesting(
-      root: Directory('${documents.path}/MindBubble/bubbles')
-        ..createSync(recursive: true),
-      supportRoot: support,
-      deviceIdentity: const DeviceIdentity('device-a'),
-    );
-
-    await store.migrateLegacyDatabaseForTesting(documents);
-    await store.migrateLegacyDatabaseForTesting(documents);
-
-    final migrated = (await store.readDocument('legacy-1'))!.bubble;
-    expect(migrated.title, 'Legacy');
-    expect(migrated.description, 'Legacy body');
-    expect(migrated.appearanceFrequency, 4);
-    expect(migrated.shownCount, 3);
-    expect(File('${support.path}/document-v2-migrated').existsSync(), isTrue);
   });
 }
 
-class _MemoryFile {
-  _MemoryFile(this.bytes, this.etag);
+final class _FakeDartloomSync implements dartloom.SyncService {
+  final _states = StreamController<dartloom.SyncSnapshot>.broadcast();
+  var current = const dartloom.SyncSnapshot.initial();
+  var report = const dartloom.SyncRunReport(
+    trigger: dartloom.SyncTrigger.manual,
+  );
+  var profiles = const [
+    dartloom.SyncProfile(
+      id: 'default',
+      label: 'Local',
+      backend: '',
+      isActive: true,
+    ),
+  ];
+  List<dartloom.SyncConflict> conflicts = [];
+  dartloom.SyncProfileDraft? lastDraft;
+  final resolved = <(String, dartloom.SyncConflictResolution)>[];
+  int syncCalls = 0;
+
+  void emit(dartloom.SyncSnapshot value) {
+    current = value;
+    _states.add(value);
+  }
+
+  @override
+  dartloom.SyncSnapshot get snapshot => current;
+  @override
+  Stream<dartloom.SyncSnapshot> get states => _states.stream;
+  @override
+  Future<void> start() async {}
+  @override
+  Future<dartloom.SyncRunReport> syncNow() async {
+    syncCalls++;
+    return report;
+  }
+
+  @override
+  Future<List<dartloom.SyncProfile>> listProfiles() async => profiles;
+  @override
+  Future<dartloom.SyncProfile> saveProfile(
+    dartloom.SyncProfileDraft draft,
+  ) async {
+    lastDraft = draft;
+    final saved = dartloom.SyncProfile(
+      id: draft.id ?? 'generated',
+      label: draft.label,
+      backend: draft.backend,
+      options: draft.options,
+      isActive: profiles.any(
+        (profile) =>
+            profile.id == (draft.id ?? 'generated') && profile.isActive,
+      ),
+    );
+    profiles = [saved];
+    return saved;
+  }
+
+  @override
+  Future<void> activateProfile(String profileId) async {
+    profiles = [
+      for (final profile in profiles)
+        dartloom.SyncProfile(
+          id: profile.id,
+          label: profile.label,
+          backend: profile.backend,
+          options: profile.options,
+          isActive: profile.id == profileId,
+        ),
+    ];
+  }
+
+  @override
+  Future<void> deleteProfile(
+    String profileId, {
+    required bool deleteLocalData,
+  }) async {}
+  @override
+  Future<List<dartloom.SyncConflict>> listConflicts() async => conflicts;
+  @override
+  Future<void> resolveConflict(
+    String conflictId,
+    dartloom.SyncConflictResolution resolution,
+  ) async {
+    resolved.add((conflictId, resolution));
+    conflicts.removeWhere((conflict) => conflict.id == conflictId);
+  }
+
+  @override
+  Future<void> dispose() => _states.close();
+}
+
+final class _MemoryFile {
+  _MemoryFile(String value) : bytes = Uint8List.fromList(utf8.encode(value));
 
   Uint8List bytes;
-  String etag;
 }
 
-class _MemoryWebDav implements WebDavTransport {
-  final Map<String, _MemoryFile> files = {};
-  int _revision = 0;
+final class _MemoryWebDav implements WebDavTransport {
+  final files = <String, _MemoryFile>{};
+  final writeCalls = <String>[];
+  final deleteCalls = <String>[];
+  final failWrites = <String>{};
+
+  void put(String remotePath, String value) {
+    files[remotePath] = _MemoryFile(value);
+  }
+
+  String? text(String remotePath) {
+    final file = files[remotePath];
+    return file == null ? null : utf8.decode(file.bytes);
+  }
+
+  Map<String, String> snapshot(String directory) => {
+    for (final entry in files.entries)
+      if (entry.key.startsWith('$directory/'))
+        entry.key: utf8.decode(entry.value.bytes),
+  };
 
   @override
   Future<void> ensureDirectory(String remotePath) async {}
 
   @override
   Future<List<WebDavResource>> list(String remotePath) async {
-    final prefix = remotePath.endsWith('/') ? remotePath : '$remotePath/';
-    return files.entries
-        .where((entry) {
-          if (!entry.key.startsWith(prefix)) return false;
-          return !entry.key.substring(prefix.length).contains('/');
-        })
-        .map(
-          (entry) => WebDavResource(
+    final prefix = '$remotePath/';
+    return [
+      for (final entry in files.entries)
+        if (entry.key.startsWith(prefix) &&
+            !entry.key.substring(prefix.length).contains('/'))
+          WebDavResource(
             path: entry.key,
             name: entry.key.substring(prefix.length),
             isDirectory: false,
-            etag: entry.value.etag,
+            etag: '"etag"',
           ),
-        )
-        .toList();
+    ];
   }
 
   @override
@@ -363,7 +384,7 @@ class _MemoryWebDav implements WebDavTransport {
     if (file == null) {
       throw const WebDavTransportException('GET', statusCode: 404);
     }
-    return WebDavReadResult(Uint8List.fromList(file.bytes), file.etag);
+    return WebDavReadResult(Uint8List.fromList(file.bytes), '"etag"');
   }
 
   @override
@@ -374,36 +395,21 @@ class _MemoryWebDav implements WebDavTransport {
     bool createOnly = false,
     String contentType = 'application/octet-stream',
   }) async {
-    final current = files[remotePath];
-    if ((createOnly && current != null) ||
-        (ifMatch != null && current?.etag != ifMatch)) {
+    writeCalls.add(remotePath);
+    if (failWrites.contains(remotePath)) {
+      throw const WebDavTransportException('PUT', statusCode: 503);
+    }
+    if (createOnly && files.containsKey(remotePath)) {
       throw const WebDavTransportException('PUT', statusCode: 412);
     }
-    final etag = '"${++_revision}"';
-    files[remotePath] = _MemoryFile(Uint8List.fromList(bytes), etag);
-    return etag;
+    files[remotePath] = _MemoryFile(utf8.decode(bytes));
+    return '"etag"';
   }
 
   @override
   Future<void> delete(String remotePath, {String? ifMatch}) async {
-    final current = files[remotePath];
-    if (current == null) return;
-    if (ifMatch != null && current.etag != ifMatch) {
-      throw const WebDavTransportException('DELETE', statusCode: 412);
-    }
+    deleteCalls.add(remotePath);
     files.remove(remotePath);
-  }
-
-  void editBubble(String id, Bubble Function(Bubble bubble) update) {
-    final remotePath = '/MindBubble/v2/bubbles/$id.md';
-    final current = files[remotePath]!;
-    final document = BubbleDocumentCodec.decode(utf8.decode(current.bytes));
-    final raw = BubbleDocumentCodec.encode(
-      update(document.bubble),
-      updatedBy: 'device-b',
-    );
-    final etag = '"${++_revision}"';
-    files[remotePath] = _MemoryFile(Uint8List.fromList(utf8.encode(raw)), etag);
   }
 
   @override

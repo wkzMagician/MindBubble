@@ -45,6 +45,7 @@ flutter test
 
 ```powershell
 $env:MIND_BUBBLE_DIR = "/path/to/Documents/MindBubble/bubbles"
+$env:MIND_BUBBLE_JOURNAL_DIR = "/path/to/AppSupport/MindBubble/mcp-journal"
 python /path/to/your/project/tools/mind_bubble_mcp.py
 ```
 
@@ -52,7 +53,7 @@ python /path/to/your/project/tools/mind_bubble_mcp.py
 
 ### 给 Agent 配置 MCP
 
-配置的核心是：以 `python` 运行 `tools/mind_bubble_mcp.py`，并把 `MIND_BUBBLE_DIR` 指向 MindBubble 的 `bubbles` 文档目录。可直接以 [示例配置](tools/mind-bubble.mcp.json) 为模板：
+配置的核心是：以 `python` 运行 `tools/mind_bubble_mcp.py`，把 `MIND_BUBBLE_DIR` 指向 MindBubble 的 `bubbles` 文档目录，并把 `MIND_BUBBLE_JOURNAL_DIR` 指向应用支持目录下的 `MindBubble/mcp-journal`。两个值都必须是由应用安装信息解析出的绝对路径。可直接以 [示例配置](tools/mind-bubble.mcp.json) 为模板：
 
 ```json
 {
@@ -61,7 +62,8 @@ python /path/to/your/project/tools/mind_bubble_mcp.py
       "command": "python",
       "args": ["/path/to/your/project/tools/mind_bubble_mcp.py"],
       "env": {
-        "MIND_BUBBLE_DIR": "/path/to/Documents/MindBubble/bubbles"
+        "MIND_BUBBLE_DIR": "/path/to/Documents/MindBubble/bubbles",
+        "MIND_BUBBLE_JOURNAL_DIR": "/path/to/AppSupport/MindBubble/mcp-journal"
       }
     }
   }

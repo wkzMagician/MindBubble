@@ -150,18 +150,18 @@ class _BubbleFieldState extends State<BubbleField>
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-        builder: (context, constraints) {
-          _fieldSize = constraints.biggest;
-          return ClipRect(
-            child: Stack(
-              children: [
-                for (var index = 0; index < widget.bubbles.length; index++)
-                  _buildBubble(widget.bubbles[index], index),
-              ],
-            ),
-          );
-        },
+    builder: (context, constraints) {
+      _fieldSize = constraints.biggest;
+      return ClipRect(
+        child: Stack(
+          children: [
+            for (var index = 0; index < widget.bubbles.length; index++)
+              _buildBubble(widget.bubbles[index], index),
+          ],
+        ),
       );
+    },
+  );
 
   Widget _buildBubble(Bubble bubble, int index) {
     final body = _bodies[bubble.id]!;
@@ -203,7 +203,9 @@ class _BubbleBody {
       bubble: bubble,
       radius: 66 + random.nextDouble() * 12,
       fraction: Offset(
-          .16 + random.nextDouble() * .68, .17 + random.nextDouble() * .66),
+        .16 + random.nextDouble() * .68,
+        .17 + random.nextDouble() * .66,
+      ),
       velocity: Offset(
         (random.nextDouble() - .5) * 45,
         (random.nextDouble() - .5) * 45,

@@ -1,9 +1,10 @@
-import 'dart:math';
 import 'dart:io';
+import 'dart:math';
 
+import 'package:dartloom_sync/dartloom_sync.dart' as dartloom;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 
 import '../../models/bubble.dart';
 import '../../l10n/l10n.dart';
@@ -257,7 +258,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(syncRevisionProvider);
+    final snapshot = ref.watch(syncSnapshotProvider).value;
+    final conflicts = ref.watch(syncConflictsProvider).value ?? const [];
     final sync = ref.read(syncServiceProvider);
     final documentIssues = ref.read(bubbleDocumentStoreProvider).issues;
     return AlertDialog(
@@ -273,10 +275,12 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
               title: Text(context.l10n.cloudSync),
               subtitle: Text(
                 _syncError ??
-                    (sync.lastSyncedAt == null
+                    ((snapshot?.lastSuccessAt ?? sync.lastSyncedAt) == null
                         ? context.l10n.cloudSyncSubtitle
                         : context.l10n.lastSynced(
-                            sync.lastSyncedAt!.toLocal().toString(),
+                            (snapshot?.lastSuccessAt ?? sync.lastSyncedAt)!
+                                .toLocal()
+                                .toString(),
                           )),
                 style: _syncError == null
                     ? null
@@ -323,14 +327,14 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                 ),
                 subtitle: Text(documentIssues.first.message),
               ),
-            if (sync.conflicts.isNotEmpty)
+            if (conflicts.isNotEmpty)
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(
                   Icons.warning_amber_rounded,
                   color: Theme.of(context).colorScheme.error,
                 ),
-                title: Text(context.l10n.syncConflicts(sync.conflicts.length)),
+                title: Text(context.l10n.syncConflicts(conflicts.length)),
                 subtitle: Text(context.l10n.syncConflictsSubtitle),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showDialog<void>(
@@ -446,8 +450,7 @@ class _ConflictDialogState extends ConsumerState<_ConflictDialog> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(syncRevisionProvider);
-    final conflicts = ref.read(syncServiceProvider).conflicts;
+    final conflicts = ref.watch(syncConflictsProvider).value ?? const [];
     return AlertDialog(
       title: Text(context.l10n.resolveSyncConflicts),
       content: SizedBox(
@@ -465,13 +468,13 @@ class _ConflictDialogState extends ConsumerState<_ConflictDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              conflict.id,
+                              conflict.key,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(_conflictReason(context, conflict.reason)),
+                            Text(_conflictReason(context, conflict)),
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 8,
@@ -526,6 +529,7 @@ class _ConflictDialogState extends ConsumerState<_ConflictDialog> {
     });
     try {
       await ref.read(syncServiceProvider).resolveConflict(id, resolution);
+      ref.invalidate(syncConflictsProvider);
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     } finally {
@@ -533,16 +537,18 @@ class _ConflictDialogState extends ConsumerState<_ConflictDialog> {
     }
   }
 
-  String _conflictReason(
-    BuildContext context,
-    String reason,
-  ) => switch (reason) {
-    'local-delete-remote-edit' => context.l10n.localDeleteRemoteEditConflict,
-    'remote-delete-local-edit' => context.l10n.remoteDeleteLocalEditConflict,
-    'same-field' => context.l10n.sameFieldConflict,
-    'unconfirmed-local-delete' => context.l10n.unconfirmedLocalDeleteConflict,
-    _ => context.l10n.divergedDocumentConflict,
-  };
+  String _conflictReason(BuildContext context, dartloom.SyncConflict conflict) {
+    if (conflict.local == null && conflict.remote != null) {
+      return context.l10n.localDeleteRemoteEditConflict;
+    }
+    if (conflict.local != null && conflict.remote == null) {
+      return context.l10n.remoteDeleteLocalEditConflict;
+    }
+    if (conflict.local != null && conflict.remote != null) {
+      return context.l10n.sameFieldConflict;
+    }
+    return context.l10n.divergedDocumentConflict;
+  }
 }
 
 class _SyncDialog extends ConsumerStatefulWidget {
@@ -569,7 +575,6 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
       if (config != null) {
         _server.text = config.serverUrl;
         _username.text = config.username;
-        _appPassword.text = config.appPassword;
       }
       setState(() => _loading = false);
     });
