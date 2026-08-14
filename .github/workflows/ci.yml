@@ -2,4 +2,4 @@ name: CI
 on: [push, pull_request]
 jobs:
   check:
-    uses: wkzMagician/dartloom/.github/workflows/flutter_ci.yml@main
+    uses: wkzMagician/dartloom/.github/workflows/flutter_ci.yml@9781c80
