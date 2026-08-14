@@ -49,6 +49,7 @@
   "webDavServer": "WebDAV server URL",
   "account": "Account (usually email)",
   "appPassword": "App password / API key",
+  "storedPasswordHint": "Saved securely. Select the field to replace it.",
   "saving": "Saving…",
   "saveAndEnable": "Save and enable",
   "titleLabel": "Title",

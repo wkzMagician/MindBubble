@@ -105,6 +105,40 @@ void main() {
       );
     });
 
+    test(
+      'keeps the stored password when unchanged settings are re-saved',
+      () async {
+        await service.configureWebDav(
+          serverUrl: 'https://example.test/dav/',
+          username: 'user',
+          appPassword: 'secret',
+        );
+        final savedDraft = delegate.lastDraft;
+
+        await service.configureWebDav(
+          serverUrl: 'https://example.test/dav/',
+          username: 'user',
+          appPassword: '',
+        );
+
+        expect(delegate.lastDraft, same(savedDraft));
+        await expectLater(
+          service.configureWebDav(
+            serverUrl: 'https://other.example.test/dav/',
+            username: 'user',
+            appPassword: '',
+          ),
+          throwsA(
+            isA<SyncException>().having(
+              (error) => error.kind,
+              'kind',
+              SyncErrorKind.configuration,
+            ),
+          ),
+        );
+      },
+    );
+
     test('uses typed conflicts and typed resolution choices', () async {
       delegate.conflicts = [
         dartloom.SyncConflict(

@@ -558,12 +558,16 @@ class _SyncDialog extends ConsumerStatefulWidget {
 }
 
 class _SyncDialogState extends ConsumerState<_SyncDialog> {
+  static const _passwordMask = '••••••••';
+
   final _server = TextEditingController(
     text: 'https://dav.jianguoyun.com/dav/',
   );
   final _username = TextEditingController();
   final _appPassword = TextEditingController();
   bool _loading = true;
+  bool _hasStoredPassword = false;
+  bool _passwordUnchanged = false;
   bool _saving = false;
   String? _error;
 
@@ -575,6 +579,9 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
       if (config != null) {
         _server.text = config.serverUrl;
         _username.text = config.username;
+        _hasStoredPassword = true;
+        _passwordUnchanged = true;
+        _appPassword.text = _passwordMask;
       }
       setState(() => _loading = false);
     });
@@ -618,8 +625,18 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
                   TextField(
                     controller: _appPassword,
                     obscureText: true,
+                    onTap: () {
+                      if (!_passwordUnchanged) return;
+                      setState(() {
+                        _passwordUnchanged = false;
+                        _appPassword.clear();
+                      });
+                    },
                     decoration: InputDecoration(
                       labelText: context.l10n.appPassword,
+                      helperText: _hasStoredPassword
+                          ? context.l10n.storedPasswordHint
+                          : null,
                     ),
                   ),
                   if (_error != null) ...[
@@ -647,11 +664,9 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
     ],
   );
   Future<void> _save() async {
-    if ([
-      _server.text,
-      _username.text,
-      _appPassword.text,
-    ].any((text) => text.trim().isEmpty)) {
+    final password = _passwordUnchanged ? '' : _appPassword.text;
+    if ([_server.text, _username.text].any((text) => text.trim().isEmpty) ||
+        (!_hasStoredPassword && password.trim().isEmpty)) {
       return;
     }
     setState(() {
@@ -663,7 +678,7 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
       await service.configureWebDav(
         serverUrl: _server.text,
         username: _username.text,
-        appPassword: _appPassword.text,
+        appPassword: password,
       );
       await service.syncNow();
       if (mounted) Navigator.pop(context);

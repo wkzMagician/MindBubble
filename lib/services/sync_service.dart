@@ -201,6 +201,21 @@ class SyncService {
       username: username.trim(),
       appPassword: appPassword,
     );
+    final existing = await _webDavProfile();
+    if (candidate.appPassword.isEmpty && existing != null) {
+      final existingUrl = existing.options['base_url'] as String? ?? '';
+      final existingUsername = existing.options['username'] as String? ?? '';
+      if (candidate.serverUrl != existingUrl ||
+          candidate.username != existingUsername) {
+        throw const SyncException(
+          '修改 WebDAV 地址或账号时，请重新输入应用密码。',
+          kind: SyncErrorKind.configuration,
+        );
+      }
+      _profile = existing;
+      await _delegate.activateProfile(existing.id);
+      return;
+    }
     _validateConfig(candidate);
     await _saveProfileAndMigrate(candidate);
   }
@@ -395,6 +410,11 @@ class SyncService {
       );
     }
     await _delegate.activateProfile(profile.id);
+  }
+
+  Future<dartloom.SyncProfile?> _webDavProfile() async {
+    final profiles = await _delegate.listProfiles();
+    return profiles.where((profile) => profile.backend == 'webdav').firstOrNull;
   }
 
   void _validateConfig(WebDavConfig config) {

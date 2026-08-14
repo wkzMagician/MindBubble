@@ -49,6 +49,7 @@
   "webDavServer": "WebDAV 服务器地址",
   "account": "账号（通常是邮箱）",
   "appPassword": "应用密码 / API Key",
+  "storedPasswordHint": "密码已安全保存；点击输入框可替换密码。",
   "saving": "保存中…",
   "saveAndEnable": "保存并启用",
   "titleLabel": "标题",
