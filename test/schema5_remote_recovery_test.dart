@@ -19,6 +19,7 @@ void main() {
       await fixture.store.writeBytes('a.md', _bytes('remote-a'));
       await fixture.store.writeBytes('b.md', _bytes('remote-b'));
       await const EtagReconciler().reconcile(fixture.request());
+      expect(await fixture.store.explicitIntents(), isEmpty);
       final remoteBefore = fixture.remote.snapshot();
       final writesBefore = fixture.remote.writeCount;
       final deletesBefore = fixture.remote.deleteCount;
@@ -86,6 +87,29 @@ void main() {
     expect(utf8.decode(fixture.remote.values['conflict.md']!), 'remote update');
     expect(conflicts.single.key, 'conflict.md');
     expect(conflicts.single.local, isNull);
+  });
+
+  test('partial remote listing never mutates either replica', () async {
+    final fixture = await _Fixture.open();
+    addTearDown(fixture.close);
+    await fixture.store.writeBytes('safe.md', _bytes('safe'));
+    await const EtagReconciler().reconcile(fixture.request());
+    final localBefore = await fixture.store.readBytes('safe.md');
+    final remoteBefore = fixture.remote.snapshot();
+    final writesBefore = fixture.remote.writeCount;
+    final deletesBefore = fixture.remote.deleteCount;
+    fixture.remote.completeScan = false;
+
+    final report = await const EtagReconciler().reconcile(fixture.request());
+
+    expect(report.failure, isNull);
+    expect(report.uploaded, 0);
+    expect(report.deletedRemotely, 0);
+    expect(report.deletedLocally, 0);
+    expect(await fixture.store.readBytes('safe.md'), localBefore);
+    expect(fixture.remote.snapshot(), remoteBefore);
+    expect(fixture.remote.writeCount, writesBefore);
+    expect(fixture.remote.deleteCount, deletesBefore);
   });
 }
 
@@ -164,6 +188,7 @@ final class _MemoryRemote implements RemoteReplica {
   int _revision = 0;
   int writeCount = 0;
   int deleteCount = 0;
+  bool completeScan = true;
 
   @override
   String get identity => 'mindbubble-test-remote';
@@ -192,7 +217,7 @@ final class _MemoryRemote implements RemoteReplica {
       for (final entry in _versions.entries)
         RemoteObjectMetadata(key: entry.key, version: entry.value),
     ],
-    complete: true,
+    complete: completeScan,
   );
   @override
   Future<RemoteObject?> read(String key) async => values[key] == null
