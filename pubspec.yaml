@@ -129,7 +129,7 @@ dependency_overrides:
   dartloom_sync_storage:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
+      ref: ee7ac65
       path: packages/dartloom_sync_storage
   dartloom_sync_webdav:
     git:

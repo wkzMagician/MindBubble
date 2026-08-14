@@ -233,8 +233,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom_sync_storage"
-      ref: "5ac34b3f4c78df8b1601c2f5255e763b9e511b82"
-      resolved-ref: "5ac34b3f4c78df8b1601c2f5255e763b9e511b82"
+      ref: ee7ac65
+      resolved-ref: ee7ac659a61ca5e6fea0f5b958d1f1a202f82817
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.1.0"
