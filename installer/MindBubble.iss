@@ -7,12 +7,14 @@
 #define MyAppExeName "mind_bubble.exe"
 #define BuildDir "..\\build\\windows\\x64\\runner\\Release"
 #define OutputDir "..\\dist"
+#define AppIconFile "..\\windows\\runner\\resources\\app_icon.ico"
 
 [Setup]
 AppId={{B3D1A6F8-3B5D-4B4E-9A7E-7C4A5F2C1D90}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+SetupIconFile={#AppIconFile}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir={#OutputDir}

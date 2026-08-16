@@ -1,0 +1,13 @@
+platforms:
+  - android
+  - ios
+  - windows
+  - macos
+  - linux
+
+packages:
+  - dartloom
+  - dartloom_singleton
+  - dartloom_singleton_socket
+  - dartloom_storage
+  - dartloom_storage_file

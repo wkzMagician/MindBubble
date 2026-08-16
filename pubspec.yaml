@@ -7,23 +7,29 @@ environment:
   sdk: '>=3.8.0 <4.0.0'
 
 dependencies:
-  # dartloom:dependencies:start
-  dartloom_autostart: ^0.2.0
-  dartloom_autostart_launch_at_startup: ^0.1.0
-  dartloom_runtime: ^0.1.0
-  dartloom_settings: ^0.2.0
-  dartloom_settings_secure_storage: ^0.1.0
-  dartloom_settings_shared_preferences: ^0.1.0
-  dartloom_storage: ^0.2.0
-  dartloom_storage_file: ^0.1.0
-  dartloom_storage_json_file: ^0.1.0
-  dartloom_sync: ^0.3.0
-  dartloom_sync_etag: ^0.2.0
-  dartloom_sync_flutter: ^0.1.0
-  dartloom_sync_storage: ^0.1.0
-  dartloom_sync_webdav: ^0.2.0
-  dartloom_sync_workmanager: ^0.1.0
-  # dartloom:dependencies:end
+  dartloom:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: ee952a7
+      path: packages/dartloom
+  dartloom_singleton: ^0.1.0
+  dartloom_singleton_socket:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: ee952a7
+      path: packages/dartloom_singleton_socket
+  dartloom_sync:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: ee952a7
+      path: packages/dartloom_sync
+  shared_preferences: ^2.5.5
+  dartloom_storage_file:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: ee952a7
+      path: packages/dartloom_storage_file
+  dartloom_storage: ^0.3.1
   flutter:
     sdk: flutter
   flutter_localizations:
@@ -56,7 +62,7 @@ flutter:
 flutter_launcher_icons:
   image_path: assets/icon/mind_bubble.png
   android: true
-  ios: false
+  ios: true
   windows:
     generate: true
   macos:
@@ -65,80 +71,33 @@ flutter_launcher_icons:
     generate: true
 
 dependency_overrides:
-  # dartloom:overrides:start
-  dartloom_autostart:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_autostart
-  dartloom_autostart_launch_at_startup:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_autostart_launch_at_startup
-  dartloom_runtime:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_runtime
   dartloom_settings:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
+      ref: ee952a7
       path: packages/dartloom_settings
-  dartloom_settings_secure_storage:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_settings_secure_storage
-  dartloom_settings_shared_preferences:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_settings_shared_preferences
-  dartloom_storage:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_storage
-  dartloom_storage_file:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_storage_file
-  dartloom_storage_json_file:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_storage_json_file
   dartloom_sync:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
+      ref: ee952a7
       path: packages/dartloom_sync
-  dartloom_sync_etag:
+  dartloom_logging:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_sync_etag
-  dartloom_sync_flutter:
+      ref: ee952a7
+      path: packages/dartloom_logging
+  dartloom_resident:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_sync_flutter
-  dartloom_sync_storage:
+      ref: ee952a7
+      path: packages/dartloom_resident
+  dartloom_singleton:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee7ac65
-      path: packages/dartloom_sync_storage
-  dartloom_sync_webdav:
+      ref: ee952a7
+      path: packages/dartloom_singleton
+  dartloom_storage:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_sync_webdav
-  dartloom_sync_workmanager:
-    git:
-      url: https://github.com/wkzMagician/dartloom.git
-      ref: 5ac34b3f4c78df8b1601c2f5255e763b9e511b82
-      path: packages/dartloom_sync_workmanager
-  # dartloom:overrides:end
+      ref: ee952a7
+      path: packages/dartloom_storage

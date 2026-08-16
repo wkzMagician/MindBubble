@@ -1,28 +1,40 @@
+import 'dart:io';
+
+import 'package:dartloom/dartloom.dart';
+import 'package:dartloom_singleton_socket/dartloom_singleton_socket.dart';
+import 'package:dartloom_storage_file/dartloom_storage_file.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:dartloom_runtime/dartloom_runtime.dart';
-import 'package:dartloom_storage/dartloom_storage.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 import 'app/app.dart';
-import 'app/dartloom_factories.dart';
-import 'capabilities/capabilities.dart';
 import 'services/bubble_document_store.dart';
 import 'services/daily_selection_cache.dart';
 import 'services/device_identity_service.dart';
 import 'services/startup_service.dart';
-import 'services/local_data_backup_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await LocalDataBackupService.createInitialBackup();
-  await initializeDartloom(customFactories: dartloomApplicationFactories);
-  final startupService = StartupService()..initialize();
+
+  final singleton = SocketSingleInstanceService(
+    identity: 'dev.mindbubble.mind_bubble',
+  );
+  await singleton.ensureSingleInstance();
+
+  final documents = await getApplicationDocumentsDirectory();
+  final ObjectStore objectStore = await FileObjectStore.open(
+    root: Directory(path.join(documents.path, 'MindBubble', 'bubbles')),
+    hierarchical: false,
+  );
   final identity = await DeviceIdentity.load();
   final documentStore = await BubbleDocumentStore.open(
     identity,
-    replicaStore: Dartloom.get<ReplicaStore>(name: 'markdown'),
+    objectStore: objectStore,
   );
   final dailyCache = await DailySelectionCache.open();
+  final startupService = StartupService()..initialize();
+
   runApp(
     ProviderScope(
       overrides: [

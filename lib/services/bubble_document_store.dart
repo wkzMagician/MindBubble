@@ -126,13 +126,13 @@ class BubbleDocumentStore {
     required this.root,
     required this.supportRoot,
     required this.deviceIdentity,
-    this.replicaStore,
+    this.objectStore,
   });
 
   final Directory root;
   final Directory supportRoot;
   final DeviceIdentity deviceIdentity;
-  final ReplicaStore? replicaStore;
+  final ObjectStore? objectStore;
   final _revisions = StreamController<int>.broadcast();
   final List<DocumentStoreIssue> _issues = [];
   StreamSubscription<FileSystemEvent>? _watcher;
@@ -143,12 +143,12 @@ class BubbleDocumentStore {
     required Directory root,
     required Directory supportRoot,
     required DeviceIdentity deviceIdentity,
-    ReplicaStore? replicaStore,
+    ObjectStore? objectStore,
   }) => BubbleDocumentStore._(
     root: root,
     supportRoot: supportRoot,
     deviceIdentity: deviceIdentity,
-    replicaStore: replicaStore,
+    objectStore: objectStore,
   );
 
   Stream<int> get revisions => _revisions.stream;
@@ -156,7 +156,7 @@ class BubbleDocumentStore {
 
   static Future<BubbleDocumentStore> open(
     DeviceIdentity identity, {
-    ReplicaStore? replicaStore,
+    ObjectStore? objectStore,
   }) async {
     final documents = await getApplicationDocumentsDirectory();
     final support = await getApplicationSupportDirectory();
@@ -164,7 +164,7 @@ class BubbleDocumentStore {
       root: Directory(path.join(documents.path, 'MindBubble', 'bubbles')),
       supportRoot: Directory(path.join(support.path, 'MindBubble')),
       deviceIdentity: identity,
-      replicaStore: replicaStore,
+      objectStore: objectStore,
     );
     await store.root.create(recursive: true);
     await store.supportRoot.create(recursive: true);
@@ -187,6 +187,24 @@ class BubbleDocumentStore {
   Future<Map<String, StoredBubbleDocument>> readAllDocuments() async {
     _issues.clear();
     final result = <String, StoredBubbleDocument>{};
+    final objectStore = this.objectStore;
+    if (objectStore != null) {
+      for (final item in await objectStore.scan()) {
+        if (!item.key.endsWith('.md')) continue;
+        final id = path.basenameWithoutExtension(item.key);
+        try {
+          final bytes = await objectStore.read(item.key);
+          if (bytes == null) continue;
+          result[id] = BubbleDocumentCodec.decode(
+            utf8.decode(bytes),
+            expectedId: id,
+          );
+        } catch (error) {
+          _issues.add(DocumentStoreIssue(item.key, '$error'));
+        }
+      }
+      return result;
+    }
     await for (final entity in root.list()) {
       if (entity is! File || !entity.path.toLowerCase().endsWith('.md')) {
         continue;
@@ -212,6 +230,13 @@ class BubbleDocumentStore {
   }
 
   Future<StoredBubbleDocument?> readDocument(String id) async {
+    final objectStore = this.objectStore;
+    if (objectStore != null) {
+      final bytes = await objectStore.read(_documentKey(id));
+      return bytes == null
+          ? null
+          : BubbleDocumentCodec.decode(utf8.decode(bytes), expectedId: id);
+    }
     final file = fileFor(id);
     if (!await file.exists()) return null;
     return BubbleDocumentCodec.decode(
@@ -229,9 +254,9 @@ class BubbleDocumentStore {
 
   Future<void> writeRaw(String id, String raw, {bool notify = true}) async {
     BubbleDocumentCodec.decode(raw, expectedId: id);
-    final replica = replicaStore;
-    if (replica != null) {
-      await replica.writeBytes(
+    final objectStore = this.objectStore;
+    if (objectStore != null) {
+      await objectStore.write(
         _documentKey(id),
         Uint8List.fromList(utf8.encode(raw)),
       );
@@ -251,9 +276,9 @@ class BubbleDocumentStore {
   }
 
   Future<void> delete(String id, {bool notify = true}) async {
-    final replica = replicaStore;
-    if (replica != null) {
-      await replica.delete(_documentKey(id));
+    final objectStore = this.objectStore;
+    if (objectStore != null) {
+      await objectStore.delete(_documentKey(id));
       if (notify) notifyChanged();
       return;
     }
