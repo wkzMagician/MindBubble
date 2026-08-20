@@ -17,25 +17,31 @@ import 'services/startup_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final singleton = SocketSingleInstanceService(
-    identity: 'dev.mindbubble.mind_bubble',
-  );
-  await singleton.ensureSingleInstance();
+  // Mount Flutter immediately while filesystem and Dartloom services start.
+  // An exception before runApp used to appear as a permanent white screen.
+  runApp(StartupBootstrap(initialize: _initializeApp()));
+}
 
-  final documents = await getApplicationDocumentsDirectory();
-  final ObjectStore objectStore = await FileObjectStore.open(
-    root: Directory(path.join(documents.path, 'MindBubble', 'bubbles')),
-  );
-  final identity = await DeviceIdentity.load();
-  final documentStore = await BubbleDocumentStore.open(
-    identity,
-    objectStore: objectStore,
-  );
-  final dailyCache = await DailySelectionCache.open();
-  final startupService = StartupService()..initialize();
+Future<Widget> _initializeApp() async {
+  try {
+    final singleton = SocketSingleInstanceService(
+      identity: 'dev.mindbubble.mind_bubble',
+    );
+    await singleton.ensureSingleInstance();
 
-  runApp(
-    ProviderScope(
+    final documents = (await getApplicationDocumentsDirectory()).absolute;
+    final ObjectStore objectStore = await FileObjectStore.open(
+      root: Directory(path.join(documents.path, 'MindBubble', 'bubbles')),
+    );
+    final identity = await DeviceIdentity.load();
+    final documentStore = await BubbleDocumentStore.open(
+      identity,
+      objectStore: objectStore,
+    );
+    final dailyCache = await DailySelectionCache.open();
+    final startupService = StartupService()..initialize();
+
+    return ProviderScope(
       overrides: [
         deviceIdentityProvider.overrideWithValue(identity),
         bubbleDocumentStoreProvider.overrideWithValue(documentStore),
@@ -43,6 +49,8 @@ Future<void> main() async {
         startupServiceProvider.overrideWithValue(startupService),
       ],
       child: const MindBubbleApp(),
-    ),
-  );
+    );
+  } on Object catch (error, stackTrace) {
+    return StartupFailureApp(error: error, stackTrace: stackTrace);
+  }
 }

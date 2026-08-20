@@ -8,11 +8,74 @@ import '../l10n/l10n.dart';
 import '../services/locale_service.dart';
 import '../services/sync_service.dart';
 
+class StartupBootstrap extends StatelessWidget {
+  const StartupBootstrap({super.key, required this.initialize});
+
+  final Future<Widget> initialize;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Widget>(
+    future: initialize,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return StartupFailureApp(
+          error: snapshot.error!,
+          stackTrace: snapshot.stackTrace ?? StackTrace.empty,
+        );
+      }
+      if (snapshot.connectionState != ConnectionState.done ||
+          !snapshot.hasData) {
+        return const _StartupLoadingApp();
+      }
+      return snapshot.data!;
+    },
+  );
+}
+
+class _StartupLoadingApp extends StatelessWidget {
+  const _StartupLoadingApp();
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData.dark(useMaterial3: true),
+    home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+  );
+}
+
 class MindBubbleApp extends ConsumerStatefulWidget {
   const MindBubbleApp({super.key});
 
   @override
   ConsumerState<MindBubbleApp> createState() => _MindBubbleAppState();
+}
+
+class StartupFailureApp extends StatelessWidget {
+  const StartupFailureApp({
+    super.key,
+    required this.error,
+    required this.stackTrace,
+  });
+
+  final Object error;
+  final StackTrace stackTrace;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData.dark(useMaterial3: true),
+    home: Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: SelectableText(
+            'MindBubble 启动失败\n\n$error\n\n$stackTrace',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {

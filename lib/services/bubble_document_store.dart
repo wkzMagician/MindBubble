@@ -169,13 +169,18 @@ class BubbleDocumentStore {
     await store.root.create(recursive: true);
     await store.supportRoot.create(recursive: true);
     await store._migrateLegacyDatabase(documents);
-    store._watcher = store.root.watch().listen((_) {
-      store._watchDebounce?.cancel();
-      store._watchDebounce = Timer(
-        const Duration(milliseconds: 300),
-        store.notifyChanged,
-      );
-    });
+    // Dart's FileSystemEntity.watch is unavailable on iOS and Android.
+    // Mobile builds refresh their document list on app resume instead of
+    // failing startup while trying to install an unsupported watcher.
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      store._watcher = store.root.watch().listen((_) {
+        store._watchDebounce?.cancel();
+        store._watchDebounce = Timer(
+          const Duration(milliseconds: 300),
+          store.notifyChanged,
+        );
+      });
+    }
     return store;
   }
 
@@ -312,6 +317,12 @@ class BubbleDocumentStore {
       await marker.writeAsString('no legacy database', flush: true);
       return;
     }
+
+    // sqflite_common_ffi is a desktop-only migration aid. Calling its FFI
+    // initializer on iOS/Android can fail before Flutter mounts the first
+    // frame, leaving the app on the native white launch screen. Mobile builds
+    // use the document store directly and must not attempt this migration.
+    if (Platform.isAndroid || Platform.isIOS) return;
 
     sqfliteFfiInit();
     final database = await databaseFactoryFfi.openDatabase(

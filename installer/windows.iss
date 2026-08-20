@@ -4,10 +4,13 @@
 #define MyAppVersion "0.4.5"
 #endif
 #define MyAppExeName "mind_bubble.exe"
+#define AppIconFile "..\windows\runner\resources\app_icon.ico"
 [Setup]
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
+SetupIconFile={#AppIconFile}
+UninstallDisplayIcon={app}\{#MyAppExeName}
 DefaultDirName={autopf}\{#MyAppName}
 OutputDir=..\dist
 OutputBaseFilename=mind_bubble-{#MyAppVersion}-windows-x64-setup
