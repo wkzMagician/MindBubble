@@ -14,3 +14,75 @@ absolute MindBubble document directory, and singleton ownership is acquired
 through `dartloom_singleton_socket` during startup.
 
 Before finishing, run `dart format .`, `flutter analyze`, and `flutter test`.
+
+<!-- dartloom:begin -->
+## Dartloom packages
+
+Selected platforms: Android, Ios, Windows, Macos, Linux
+
+### Dartloom SDK
+
+Package: `dartloom`
+
+- Platforms: Android, Ios, Windows, Macos, Linux, Web
+- Purpose: Stable Dartloom contract facade.
+- Main API: Dartloom SDK
+- Import:
+
+  ```dart
+  import 'package:dartloom/dartloom.dart';
+  ```
+
+### Singleton
+
+Package: `dartloom_singleton`
+
+- Platforms: Android, Ios, Windows, Macos, Linux, Web
+- Purpose: Singleton package for Dart and Flutter applications.
+- Main API: Singleton
+- Import:
+
+  ```dart
+  import 'package:dartloom_singleton/dartloom_singleton.dart';
+  ```
+
+### Singleton Socket
+
+Package: `dartloom_singleton_socket`
+
+- Platforms: Android, Ios, Windows, Macos, Linux, Web
+- Purpose: Singleton Socket package for Dart and Flutter applications.
+- Main API: SingletonSocket
+- Import:
+
+  ```dart
+  import 'package:dartloom_singleton_socket/dartloom_singleton_socket.dart';
+  ```
+
+### Storage Contracts
+
+Package: `dartloom_storage`
+
+- Platforms: Android, Ios, Windows, Macos, Linux, Web
+- Purpose: Stable binary object-storage contracts.
+- Main API: ObjectStore
+- Import:
+
+  ```dart
+  import 'package:dartloom_storage/dartloom_storage.dart';
+  ```
+
+### File Object Storage
+
+Package: `dartloom_storage_file`
+
+- Platforms: Android, Ios, Windows, Macos, Linux
+- Purpose: Directory-backed binary object storage.
+- Main API: FileObjectStore
+- Import:
+
+  ```dart
+  import 'package:dartloom_storage_file/dartloom_storage_file.dart';
+  ```
+
+<!-- dartloom:end -->

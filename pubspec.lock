@@ -109,8 +109,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "1.0.0"
@@ -118,8 +118,8 @@ packages:
     dependency: "direct overridden"
     description:
       path: "packages/dartloom_logging"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.2.0"
@@ -127,8 +127,8 @@ packages:
     dependency: "direct overridden"
     description:
       path: "packages/dartloom_resident"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.3.0"
@@ -136,8 +136,8 @@ packages:
     dependency: "direct overridden"
     description:
       path: "packages/dartloom_settings"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.2.0"
@@ -145,8 +145,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom_singleton"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.1.0"
@@ -154,8 +154,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom_singleton_socket"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.1.0"
@@ -163,8 +163,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom_storage"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.3.1"
@@ -172,8 +172,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom_storage_file"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.2.0"
@@ -181,8 +181,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/dartloom_sync"
-      ref: ee952a7
-      resolved-ref: ee952a78dbbfe619ce0eddb9b2bce1394528a90a
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.4.0"

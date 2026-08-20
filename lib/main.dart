@@ -25,7 +25,6 @@ Future<void> main() async {
   final documents = await getApplicationDocumentsDirectory();
   final ObjectStore objectStore = await FileObjectStore.open(
     root: Directory(path.join(documents.path, 'MindBubble', 'bubbles')),
-    hierarchical: false,
   );
   final identity = await DeviceIdentity.load();
   final documentStore = await BubbleDocumentStore.open(

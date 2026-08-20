@@ -10,24 +10,24 @@ dependencies:
   dartloom:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom
   dartloom_singleton: ^0.1.0
   dartloom_singleton_socket:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_singleton_socket
   dartloom_sync:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_sync
   shared_preferences: ^2.5.5
   dartloom_storage_file:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_storage_file
   dartloom_storage: ^0.3.1
   flutter:
@@ -74,30 +74,30 @@ dependency_overrides:
   dartloom_settings:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_settings
   dartloom_sync:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_sync
   dartloom_logging:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_logging
   dartloom_resident:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_resident
   dartloom_singleton:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_singleton
   dartloom_storage:
     git:
       url: https://github.com/wkzMagician/dartloom.git
-      ref: ee952a7
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_storage
