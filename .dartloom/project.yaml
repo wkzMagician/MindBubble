@@ -9,5 +9,6 @@ packages:
   - dartloom
   - dartloom_singleton
   - dartloom_singleton_socket
+  - dartloom_sync
   - dartloom_storage
   - dartloom_storage_file

@@ -59,6 +59,19 @@ Package: `dartloom_singleton_socket`
   import 'package:dartloom_singleton_socket/dartloom_singleton_socket.dart';
   ```
 
+### Synchronization Contracts
+
+Package: `dartloom_sync`
+
+- Platforms: Android, Ios, Windows, Macos, Linux, Web
+- Purpose: Stable synchronization contracts.
+- Main API: SyncService
+- Import:
+
+  ```dart
+  import 'package:dartloom_sync/dartloom_sync.dart';
+  ```
+
 ### Storage Contracts
 
 Package: `dartloom_storage`
