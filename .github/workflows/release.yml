@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build apk --release
       - run: flutter build appbundle --release
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build ipa --release --no-codesign
       - uses: actions/upload-artifact@v4
@@ -45,13 +45,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build windows --release
+      - run: choco install innosetup --no-progress -y
+      - run: iscc /DMyAppVersion=${{ github.ref_name }} installer\windows.iss
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: build/windows/**/Release/**
+          path: dist/*.exe
 
   macos:
     runs-on: macos-latest
@@ -59,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build macos --release
       - uses: actions/upload-artifact@v4
@@ -71,9 +73,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build linux --release
       - uses: actions/upload-artifact@v4
