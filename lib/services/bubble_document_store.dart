@@ -313,6 +313,12 @@ class BubbleDocumentStore {
       return;
     }
 
+    // sqflite_common_ffi is a desktop-only migration aid. Calling its FFI
+    // initializer on iOS/Android can fail before Flutter mounts the first
+    // frame, leaving the app on the native white launch screen. Mobile builds
+    // use the document store directly and must not attempt this migration.
+    if (Platform.isAndroid || Platform.isIOS) return;
+
     sqfliteFfiInit();
     final database = await databaseFactoryFfi.openDatabase(
       databaseFile.path,
