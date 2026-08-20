@@ -1,7 +1,7 @@
 name: mind_bubble
 description: A calm desktop concept reminder application.
 publish_to: none
-version: 0.4.4
+version: 0.4.5
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
