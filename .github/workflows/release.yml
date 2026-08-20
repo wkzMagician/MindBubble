@@ -20,10 +20,16 @@ jobs:
       - run: flutter pub get
       - run: flutter build apk --release
       - run: flutter build appbundle --release
+      - name: Package Android
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/mind_bubble-android.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/mind_bubble-android.aab
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: build/app/outputs/**
+          path: dist/*
 
   ios:
     runs-on: macos-latest
@@ -33,11 +39,17 @@ jobs:
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
-      - run: flutter build ipa --release --no-codesign
+      - run: flutter build ios --release --no-codesign
+      - name: Package iOS IPA
+        shell: bash
+        run: |
+          mkdir -p dist Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr dist/mind_bubble-ios.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
           name: ios
-          path: build/ios/ipa/**
+          path: dist/*
 
   windows:
     runs-on: windows-latest
@@ -47,9 +59,15 @@ jobs:
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
-      - run: flutter build windows --release
       - run: choco install innosetup --no-progress -y
-      - run: iscc /DMyAppVersion=${{ github.ref_name }} installer\windows.iss
+      - run: flutter build windows --release
+      - name: Package Windows installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)').Matches.Groups[1].Value
+          if (-not $version) { throw "pubspec.yaml version not found" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer\windows.iss
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -64,10 +82,16 @@ jobs:
           flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build macos --release
+      - name: Package macOS app
+        shell: bash
+        run: |
+          mkdir -p dist
+          app_path=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -type d | head -n 1)
+          ditto -c -k --keepParent "$app_path" dist/mind_bubble-macos.zip
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: build/macos/Build/Products/Release/**
+          path: dist/*
 
   linux:
     runs-on: ubuntu-latest
@@ -76,16 +100,21 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev zip
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build linux --release
+      - name: Package Linux bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -czf dist/mind_bubble-linux-x64.tar.gz -C build/linux/x64/release bundle
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: build/linux/**/release/**
+          path: dist/*
 
   release:
     needs: [android, ios, windows, macos, linux]
@@ -93,13 +122,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+        with:
+          path: downloaded_artifacts
+      - name: Collect release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release_files
+          find downloaded_artifacts -type f ! -name 'dartloom-build.json' -exec cp {} release_files/ \;
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: |
-            android/**/*.apk
-            android/**/*.aab
-            ios/**/*.ipa
-            windows/**/*.exe
-            linux/**/release/bundle/**
-            macos/**/Release/*.app/**
+          overwrite_files: true
+          files: release_files/*
