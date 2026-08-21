@@ -90,8 +90,11 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
   // Dartloom owns startup, resume, connectivity, polling, retry, and
   // local-write triggers. The app only performs compatibility migrations and
   // exposes the configured profile to the existing UI.
-  Future<void> _initializeSyncFacade() =>
-      ref.read(syncServiceProvider).loadConfig();
+  Future<void> _initializeSyncFacade() async {
+    final sync = ref.read(syncServiceProvider);
+    final config = await sync.loadConfig();
+    if (config != null) await sync.syncNow();
+  }
 
   @override
   Widget build(BuildContext context) {

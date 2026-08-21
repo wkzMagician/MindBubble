@@ -92,38 +92,6 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
                 : _buildRenderedBlock(index),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 9, 16, 11),
-          decoration: const BoxDecoration(
-            color: Color(0xFF0A222D),
-            borderRadius: BorderRadius.vertical(bottom: Radius.circular(15)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.errorText ?? context.l10n.blockEditorHelp,
-                  style: TextStyle(
-                    color: widget.errorText == null
-                        ? Colors.white.withValues(alpha: .5)
-                        : Theme.of(context).colorScheme.error,
-                    fontSize: 12.5,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                context.l10n.blockCount(
-                  _blocks.where((block) => block.raw.trim().isNotEmpty).length,
-                ),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: .4),
-                  fontSize: 12.5,
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     ),
   );

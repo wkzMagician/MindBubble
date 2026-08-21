@@ -81,6 +81,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
+  connectivity_plus:
+    dependency: transitive
+    description:
+      name: connectivity_plus
+      sha256: "762c99f890ca8bf87f7337236f99edd42793843bc6c3631da294a76653a54bd0"
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.3.1"
+  connectivity_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: connectivity_plus_platform_interface
+      sha256: "3c09627c536d22fd24691a905cdd8b14520de69da52c7a97499c8be5284a32ed"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   cross_file:
     dependency: transitive
     description:
@@ -114,8 +130,26 @@ packages:
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "1.0.0"
+  dartloom_autostart:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_autostart"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.2.0"
+  dartloom_autostart_launch_at_startup:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_autostart_launch_at_startup"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.1.0"
   dartloom_logging:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       path: "packages/dartloom_logging"
       ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
@@ -123,6 +157,15 @@ packages:
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.2.0"
+  dartloom_logging_logger:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_logging_logger"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.1.0"
   dartloom_resident:
     dependency: "direct overridden"
     description:
@@ -133,7 +176,7 @@ packages:
     source: git
     version: "0.3.0"
   dartloom_settings:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       path: "packages/dartloom_settings"
       ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
@@ -141,6 +184,24 @@ packages:
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.2.0"
+  dartloom_settings_secure_storage:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_settings_secure_storage"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.1.0"
+  dartloom_settings_shared_preferences:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_settings_shared_preferences"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.1.0"
   dartloom_singleton:
     dependency: "direct main"
     description:
@@ -186,6 +247,51 @@ packages:
       url: "https://github.com/wkzMagician/dartloom.git"
     source: git
     version: "0.4.0"
+  dartloom_sync_etag:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_sync_etag"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.3.0"
+  dartloom_sync_flutter:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_sync_flutter"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.1.0"
+  dartloom_sync_storage:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_sync_storage"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.3.0"
+  dartloom_sync_webdav:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_sync_webdav"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.2.0"
+  dartloom_sync_workmanager:
+    dependency: "direct main"
+    description:
+      path: "packages/dartloom_sync_workmanager"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
+    version: "0.1.0"
   dbus:
     dependency: transitive
     description:
@@ -292,6 +398,54 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.1"
+  flutter_secure_storage:
+    dependency: transitive
+    description:
+      name: flutter_secure_storage
+      sha256: "7686b1d6a29985dcbb808c59518226e603e3bfa7c0ddfd1a0d00e4cda77c868e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.3.1"
+  flutter_secure_storage_darwin:
+    dependency: transitive
+    description:
+      name: flutter_secure_storage_darwin
+      sha256: "82329fa5cdf343773b1b6897dea959105a29f092454259edff92f9f6637e8149"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.2"
+  flutter_secure_storage_linux:
+    dependency: transitive
+    description:
+      name: flutter_secure_storage_linux
+      sha256: "76fa9c841b3b1619fc5b5bc36efc7d158fa2356f223b6caeb1d0c80a54168546"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.2"
+  flutter_secure_storage_platform_interface:
+    dependency: transitive
+    description:
+      name: flutter_secure_storage_platform_interface
+      sha256: "788060052712555182aba55ecb5f8b6e5cb9cfe8f776c83249a61fe3ce877db4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.3"
+  flutter_secure_storage_web:
+    dependency: transitive
+    description:
+      name: flutter_secure_storage_web
+      sha256: "073a62b3aeb866ab4ce795f960413948e51e5a42a9b0c8333b6daf5bb3208a1c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.1"
+  flutter_secure_storage_windows:
+    dependency: transitive
+    description:
+      name: flutter_secure_storage_windows
+      sha256: "3b7c8e068875dfd46719ff57c90d8c459c87f2302ed6b00ff006b3c9fcad1613"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -382,6 +536,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.12.0"
+  launch_at_startup:
+    dependency: transitive
+    description:
+      name: launch_at_startup
+      sha256: "7db33398b76ec0ed9e27f9f4640553e239977437564046625e215be89c91f084"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.1"
   leak_tracker:
     dependency: transitive
     description:
@@ -414,6 +576,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.1.1"
+  logger:
+    dependency: transitive
+    description:
+      name: logger
+      sha256: "25aee487596a6257655a1e091ec2ae66bc30e7af663592cc3a27e6591e05035c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.7.0"
   logging:
     dependency: transitive
     description:
@@ -462,6 +632,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.19.2"
+  nm:
+    dependency: transitive
+    description:
+      name: nm
+      sha256: "2c9aae4127bdc8993206464fcc063611e0e36e72018696cd9631023a31b24254"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
   objective_c:
     dependency: transitive
     description:
@@ -771,6 +949,62 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.15.0"
+  win32_registry:
+    dependency: transitive
+    description:
+      name: win32_registry
+      sha256: "6f1b564492d0147b330dd794fee8f512cec4977957f310f9951b5f9d83618dae"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
+  workmanager:
+    dependency: transitive
+    description:
+      name: workmanager
+      sha256: c2c7a3eb984cfcf5623308042fc8270e7e02f5021b34f491ffc0a1ec8e281d5c
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.9"
+  workmanager_android:
+    dependency: transitive
+    description:
+      name: workmanager_android
+      sha256: "187d1d34864f57f9e388b33b88c001c494093c53679831a3dec2e8176e8829d1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.8"
+  workmanager_apple:
+    dependency: transitive
+    description:
+      name: workmanager_apple
+      sha256: "15558fb54415a010910c3529eaf8f61f94d23903dac620331895c472602d6f6e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.9.10"
+  workmanager_linux:
+    dependency: transitive
+    description:
+      name: workmanager_linux
+      sha256: "7d8520e1103b910a43d8bafe37ec2415f4c7c148afcb1eee0ec73ae67b4cdd22"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1+1"
+  workmanager_platform_interface:
+    dependency: transitive
+    description:
+      name: workmanager_platform_interface
+      sha256: "378b392db15ee88cd878ab983d3a0b4b1e460cfbb0f096ff74fda2614b1ba172"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.4"
+  workmanager_web:
+    dependency: transitive
+    description:
+      name: workmanager_web
+      sha256: "2ac481ade599bdd957ee2891be09a0c34be87923a2c3ca4dfe36add6fc735ffd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.0"
   xdg_directories:
     dependency: transitive
     description:
