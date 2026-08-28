@@ -29,7 +29,7 @@
 - **控制浮现频率**：为每个概念设置五档出现频率，从很少到频繁，决定它被重新展示的节奏。
 - **用 Markdown 记录**：标题和正文都支持 Markdown，适合保存短笔记、知识卡片、阅读摘录和长期思考。
 - **集中管理泡泡**：搜索、创建、编辑、删除和批量导入概念，管理自己的知识池。
-- **从表格快速导入**：支持 CSV 与 XLSX，适合把已有的笔记或知识库一次性带入浮念。
+- **按标准格式导入**：支持版本化的 `mind-bubble-import` JSON 批次；CSV/XLSX 仍作为旧格式兼容导入。
 - **多设备保持一致**：通过兼容 WebDAV 的服务同步，可使用坚果云、Nextcloud 等服务。
 - **和 Agent 一起工作**：内置 MCP 服务，Codex、Claude Code、OpenCode 等 Agent 可以读取、搜索和维护同一套本地泡泡。
 
@@ -94,7 +94,7 @@ flutter test
 - 导入、列出和搜索泡泡；
 - 查看、更新和删除单个泡泡。
 
-详细配置请参考 [MCP 示例配置](tools/mind-bubble.mcp.json) 和 [MCP 服务脚本](tools/mind_bubble_mcp.py)。
+详细配置请参考 [MCP 示例配置](tools/mind-bubble.mcp.json)、[导入格式](docs/MIND_BUBBLE_IMPORT_FORMAT.md)、[MCP 服务脚本](tools/mind_bubble_mcp.py) 和仓库内的 [mind-bubble-import skill](skills/mind-bubble-import/SKILL.md)。MCP 还提供 `get_import_checkpoint`，用于按来源游标增量导入。
 
 ## 构建发布包
 

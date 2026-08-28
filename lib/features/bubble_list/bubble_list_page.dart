@@ -152,9 +152,28 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
     // this compact first-run flow recognizes title/description headers.
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['csv', 'xlsx'],
+      allowedExtensions: ['json', 'csv', 'xlsx'],
     );
     if (result == null || result.files.single.path == null) return;
+    final selectedPath = result.files.single.path!;
+    if (selectedPath.toLowerCase().endsWith('.json')) {
+      try {
+        final imported = await _importCanonical(File(selectedPath));
+        _refresh();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.importedCount(imported))),
+          );
+        }
+      } on Object catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.readError('$error'))),
+          );
+        }
+      }
+      return;
+    }
     final rows = await ImportService().readTable(
       File(result.files.single.path!),
     );
@@ -193,6 +212,61 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
         SnackBar(content: Text(context.l10n.importedCount(imported))),
       );
     }
+  }
+
+  Future<int> _importCanonical(File file) async {
+    final batch = await ImportService().readImport(file);
+    final store = ref.read(bubbleDocumentStoreProvider);
+    final sourceId = batch.sourceId;
+    if (sourceId != null) {
+      final previous = await ImportCheckpointStore.read(
+        store.supportRoot,
+        sourceId,
+      );
+      if (previous != null && batch.cursor != previous) {
+        throw FormatException(
+          'Import cursor does not continue source "$sourceId".',
+        );
+      }
+    }
+    final repository = ref.read(bubbleRepositoryProvider);
+    final existing = {
+      for (final bubble in await repository.getAll(includeDeleted: true))
+        bubble.id: bubble,
+    };
+    var imported = 0;
+    for (final item in batch.items) {
+      final now = DateTime.now();
+      final previous = existing[item.id];
+      final updatedAt = item.updatedAt ?? now.toUtc();
+      if (previous != null && !updatedAt.isAfter(previous.updatedAt)) {
+        continue;
+      }
+      final bubble = Bubble(
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        createdAt: previous?.createdAt ?? now,
+        updatedAt: updatedAt,
+        appearanceFrequency: item.appearanceFrequency,
+        shownByDevice: previous?.shownByDevice ?? const {},
+        lastShownAt: previous?.lastShownAt,
+        shownCount: previous?.shownCount ?? 0,
+        deletedAt: null,
+        fieldVersions: previous?.fieldVersions ?? const {},
+      );
+      await repository.save(bubble);
+      existing[item.id] = bubble;
+      imported++;
+    }
+    if (sourceId != null && batch.nextCursor != null) {
+      await ImportCheckpointStore.write(
+        store.supportRoot,
+        sourceId,
+        batch.nextCursor!,
+      );
+    }
+    return imported;
   }
 
   Future<void> _openDetail(Bubble bubble) async {
