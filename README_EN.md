@@ -27,7 +27,7 @@ On its first Ocean view each day, the app caches up to five bubbles; changing fr
 
 ## Import
 
-The import button in Manage Bubbles accepts CSV and XLSX. It recognizes `title`/`标题` and `description`/`正文`/`描述`; rows missing either field are skipped. Titles are deduplicated case-insensitively.
+The import button accepts the versioned `mind-bubble-import` JSON format described in [the import specification](docs/MIND_BUBBLE_IMPORT_FORMAT.md). Stable item IDs make retries and updates idempotent; a source may carry an opaque cursor and next cursor for incremental imports. CSV and XLSX remain available as a legacy compatibility path.
 
 ## Local documents
 
@@ -37,7 +37,7 @@ Each bubble is a `<id>.md` file in `Documents/MindBubble/bubbles`. JSON Front Ma
 
 ## Agent / MCP
 
-The repository’s [MCP server](tools/mind_bubble_mcp.py) lets Codex, Claude Code, OpenCode, and other MCP clients work with the same local bubbles. It provides `import_bubbles`, `list_bubbles`, `search_bubbles`, `get_bubble`, `update_bubble`, and `delete_bubble`.
+The repository’s [MCP server](tools/mind_bubble_mcp.py) lets Codex, Claude Code, OpenCode, and other MCP clients work with the same local bubbles. It provides `import_bubbles`, `get_import_checkpoint`, `list_bubbles`, `search_bubbles`, `get_bubble`, `update_bubble`, and `delete_bubble`. The reusable [mind-bubble-import skill](skills/mind-bubble-import/SKILL.md) describes the source-to-batch workflow.
 
 ### Start the MCP server
 
