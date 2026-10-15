@@ -17,6 +17,7 @@ import '../../widgets/bubble_detail_dialog.dart';
 import '../../widgets/markdown_block_editor.dart';
 import '../../services/visual_theme_service.dart';
 import 'import_wizard.dart';
+import 'reminder_settings_panel.dart';
 
 class BubbleListPage extends ConsumerStatefulWidget {
   const BubbleListPage({super.key});
@@ -259,154 +260,162 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     return AlertDialog(
       title: Text(context.l10n.settings),
       content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.cloud_sync_outlined),
-              title: Text(context.l10n.cloudSync),
-              subtitle: Text(
-                _syncError ??
-                    ((snapshot?.lastSuccessAt ?? sync.lastSyncedAt) == null
-                        ? context.l10n.cloudSyncSubtitle
-                        : context.l10n.lastSynced(
-                            (snapshot?.lastSuccessAt ?? sync.lastSyncedAt)!
-                                .toLocal()
-                                .toString(),
-                          )),
-                style: _syncError == null
-                    ? null
-                    : TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (sync.isConfigured)
-                    IconButton(
-                      tooltip: context.l10n.syncNow,
-                      onPressed: _syncing ? null : _syncNow,
-                      icon: _syncing
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync),
-                    ),
-                  const Icon(Icons.chevron_right),
-                ],
-              ),
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => const _SyncDialog(),
-              ),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.folder_outlined),
-              title: Text(context.l10n.openDocumentFolder),
-              subtitle: Text(ref.read(bubbleDocumentStoreProvider).root.path),
-              onTap: _openDocumentFolder,
-            ),
-            if (documentIssues.isNotEmpty)
+        width: 440,
+        height: min(640, MediaQuery.sizeOf(context).height * 0.70),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.description_outlined,
-                  color: Theme.of(context).colorScheme.error,
+                leading: const Icon(Icons.cloud_sync_outlined),
+                title: Text(context.l10n.cloudSync),
+                subtitle: Text(
+                  _syncError ??
+                      ((snapshot?.lastSuccessAt ?? sync.lastSyncedAt) == null
+                          ? context.l10n.cloudSyncSubtitle
+                          : context.l10n.lastSynced(
+                              (snapshot?.lastSuccessAt ?? sync.lastSyncedAt)!
+                                  .toLocal()
+                                  .toString(),
+                            )),
+                  style: _syncError == null
+                      ? null
+                      : TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-                title: Text(
-                  context.l10n.invalidDocuments(documentIssues.length),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (sync.isConfigured)
+                      IconButton(
+                        tooltip: context.l10n.syncNow,
+                        onPressed: _syncing ? null : _syncNow,
+                        icon: _syncing
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.sync),
+                      ),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
-                subtitle: Text(documentIssues.first.message),
-              ),
-            if (conflicts.isNotEmpty)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.warning_amber_rounded,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                title: Text(context.l10n.syncConflicts(conflicts.length)),
-                subtitle: Text(context.l10n.syncConflictsSubtitle),
-                trailing: const Icon(Icons.chevron_right),
                 onTap: () => showDialog<void>(
                   context: context,
-                  builder: (_) => const _ConflictDialog(),
+                  builder: (_) => const _SyncDialog(),
                 ),
               ),
-            const Divider(),
-            DropdownButtonFormField<String>(
-              initialValue:
-                  ref.watch(localeControllerProvider)?.languageCode ?? 'system',
-              decoration: InputDecoration(
-                labelText: context.l10n.language,
-                prefixIcon: const Icon(Icons.language),
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: 'system',
-                  child: Text(context.l10n.followSystem),
-                ),
-                DropdownMenuItem(
-                  value: 'zh',
-                  child: Text(context.l10n.chinese),
-                ),
-                DropdownMenuItem(
-                  value: 'en',
-                  child: Text(context.l10n.english),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(localeControllerProvider.notifier)
-                      .setPreference(value);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<VisualTheme>(
-              initialValue: ref.watch(visualThemeProvider),
-              decoration: const InputDecoration(
-                labelText: '外观主题',
-                prefixIcon: Icon(Icons.palette_outlined),
-              ),
-              items: const [
-                DropdownMenuItem(
-                  value: VisualTheme.ocean,
-                  child: Text('Ocean · 海洋'),
-                ),
-                DropdownMenuItem(
-                  value: VisualTheme.redNote,
-                  child: Text('小红书 · 灵感卡片'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(visualThemeProvider.notifier).setTheme(value);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            if (!ref.read(startupServiceProvider).isSupported)
-              Text(context.l10n.unsupportedStartup)
-            else if (_enabled == null)
-              const Center(child: CircularProgressIndicator())
-            else
-              SwitchListTile(
+              ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(context.l10n.launchAtStartup),
-                subtitle: Text(
-                  context.l10n.startupPlatformDescription(
-                    ref.read(startupServiceProvider).platformLabel,
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(context.l10n.openDocumentFolder),
+                subtitle: Text(ref.read(bubbleDocumentStoreProvider).root.path),
+                onTap: _openDocumentFolder,
+              ),
+              if (documentIssues.isNotEmpty)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.description_outlined,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    context.l10n.invalidDocuments(documentIssues.length),
+                  ),
+                  subtitle: Text(documentIssues.first.message),
+                ),
+              if (conflicts.isNotEmpty)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.warning_amber_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(context.l10n.syncConflicts(conflicts.length)),
+                  subtitle: Text(context.l10n.syncConflictsSubtitle),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => const _ConflictDialog(),
                   ),
                 ),
-                value: _enabled!,
-                onChanged: _saving ? null : _setStartupEnabled,
+              const Divider(),
+              DropdownButtonFormField<String>(
+                initialValue:
+                    ref.watch(localeControllerProvider)?.languageCode ??
+                    'system',
+                decoration: InputDecoration(
+                  labelText: context.l10n.language,
+                  prefixIcon: const Icon(Icons.language),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'system',
+                    child: Text(context.l10n.followSystem),
+                  ),
+                  DropdownMenuItem(
+                    value: 'zh',
+                    child: Text(context.l10n.chinese),
+                  ),
+                  DropdownMenuItem(
+                    value: 'en',
+                    child: Text(context.l10n.english),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    ref
+                        .read(localeControllerProvider.notifier)
+                        .setPreference(value);
+                  }
+                },
               ),
-          ],
+              const SizedBox(height: 12),
+              DropdownButtonFormField<VisualTheme>(
+                initialValue: ref.watch(visualThemeProvider),
+                decoration: const InputDecoration(
+                  labelText: '外观主题',
+                  prefixIcon: Icon(Icons.palette_outlined),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: VisualTheme.ocean,
+                    child: Text('Ocean · 海洋'),
+                  ),
+                  DropdownMenuItem(
+                    value: VisualTheme.redNote,
+                    child: Text('小红书 · 灵感卡片'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    ref.read(visualThemeProvider.notifier).setTheme(value);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              const ReminderSettingsPanel(),
+              const SizedBox(height: 12),
+              if (!ref.read(startupServiceProvider).isSupported)
+                Text(context.l10n.unsupportedStartup)
+              else if (_enabled == null)
+                const Center(child: CircularProgressIndicator())
+              else
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(context.l10n.launchAtStartup),
+                  subtitle: Text(
+                    context.l10n.startupPlatformDescription(
+                      ref.read(startupServiceProvider).platformLabel,
+                    ),
+                  ),
+                  value: _enabled!,
+                  onChanged: _saving ? null : _setStartupEnabled,
+                ),
+            ],
+          ),
         ),
       ),
       actions: [

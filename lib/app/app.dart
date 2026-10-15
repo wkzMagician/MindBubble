@@ -3,6 +3,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/ocean/ocean_page.dart';
+import '../repositories/bubble_repository.dart';
+import '../services/reminder_runtime.dart';
+import '../services/reminder_settings.dart';
+import '../services/bubble_document_store.dart';
+import '../widgets/bubble_detail_dialog.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/l10n.dart';
 import '../services/locale_service.dart';
@@ -79,13 +84,76 @@ class StartupFailureApp extends StatelessWidget {
   );
 }
 
-class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
+class _MindBubbleAppState extends ConsumerState<MindBubbleApp>
+    with WidgetsBindingObserver {
   late Future<void> _initialSync;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  bool _launchHandled = false;
 
   @override
   void initState() {
     super.initState();
     _initialSync = _initializeSyncFacade();
+    WidgetsBinding.instance.addObserver(this);
+    ref.read(reminderPlatformProvider).onOpen = _showReminderBubble;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _updateReminders();
+      final id = await ref.read(reminderPlatformProvider).consumeLaunchBubble();
+      if (id != null && !_launchHandled) {
+        _launchHandled = true;
+        _showReminderBubble(id);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    ref.read(reminderPlatformProvider).onOpen = null;
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refill OS notification queue without resetting desktop timer cadence.
+      ref.read(reminderRuntimeProvider).refreshMobileSchedule();
+    }
+  }
+
+  Future<void> _updateReminders() async {
+    if (!mounted) return;
+    await ref
+        .read(reminderRuntimeProvider)
+        .configure(
+          ref.read(reminderSettingsProvider),
+          redNote: ref.read(visualThemeProvider) == VisualTheme.redNote,
+        );
+  }
+
+  Future<void> _showReminderBubble(String bubbleId) async {
+    // This is deliberately separate from homeRefreshVersionProvider.
+    if (!mounted) return;
+    final bubble = await ref.read(bubbleRepositoryProvider).getById(bubbleId);
+    if (bubble == null || !mounted) return;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showReminderBubble(bubbleId),
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: navigator.context,
+      builder: (_) => BubbleDetailDialog(
+        bubble: bubble,
+        documentStore: ref.read(bubbleDocumentStoreProvider),
+        onFrequencyChanged: (frequency) => ref
+            .read(bubbleRepositoryProvider)
+            .updateFrequency(bubble.id, frequency),
+      ),
+    );
   }
 
   // Dartloom owns startup, resume, connectivity, polling, retry, and
@@ -99,6 +167,9 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(reminderSettingsProvider, (_, __) => _updateReminders());
+    ref.listen(visualThemeProvider, (_, __) => _updateReminders());
+    ref.listen(bubbleRevisionProvider, (_, __) => _updateReminders());
     final locale = ref.watch(localeControllerProvider);
     final redNote = ref.watch(visualThemeProvider) == VisualTheme.redNote;
     final colors = ColorScheme.fromSeed(
@@ -107,6 +178,7 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
       surface: redNote ? RedNoteColors.surface : const Color(0xFF0B2531),
     );
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
       localizationsDelegates: const [
         AppLocalizations.delegate,
