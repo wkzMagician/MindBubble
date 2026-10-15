@@ -67,15 +67,30 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-              child: SearchBar(
-                elevation: const WidgetStatePropertyAll(0),
-                backgroundColor: WidgetStatePropertyAll(context.appField),
-                side: WidgetStatePropertyAll(
-                  BorderSide(color: Colors.white.withValues(alpha: .1)),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: context.isRedNote ? 980 : double.infinity,
+                  ),
+                  child: SearchBar(
+                    elevation: const WidgetStatePropertyAll(0),
+                    backgroundColor: WidgetStatePropertyAll(
+                      context.isRedNote
+                          ? RedNoteColors.surface
+                          : context.appField,
+                    ),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(
+                        color: context.isRedNote
+                            ? RedNoteColors.border
+                            : Colors.white.withValues(alpha: .1),
+                      ),
+                    ),
+                    leading: const Icon(Icons.search),
+                    hintText: context.l10n.searchHint,
+                    onChanged: (value) => setState(() => _query = value),
+                  ),
                 ),
-                leading: const Icon(Icons.search),
-                hintText: context.l10n.searchHint,
-                onChanged: (value) => setState(() => _query = value),
               ),
             ),
             Expanded(
@@ -89,13 +104,23 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, index) => _BubbleTile(
-                          bubble: items[index],
-                          colorIndex: index,
-                          onOpen: () => _openDetail(items[index]),
-                          onEdit: () =>
-                              _openEditor(context, bubble: items[index]),
-                          onDelete: () => _delete(items[index]),
+                        itemBuilder: (_, index) => Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: context.isRedNote
+                                  ? 980
+                                  : double.infinity,
+                            ),
+                            child: _BubbleTile(
+                              bubble: items[index],
+                              colorIndex: index,
+                              onOpen: () => _openDetail(items[index]),
+                              onEdit: () =>
+                                  _openEditor(context, bubble: items[index]),
+                              onDelete: () => _delete(items[index]),
+                            ),
+                          ),
                         ),
                       ),
               ),
@@ -708,6 +733,79 @@ class _BubbleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.isRedNote) {
+      return Material(
+        color: RedNoteColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: RedNoteColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
+            child: Row(
+              children: [
+                Container(
+                  height: 44,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    color: RedNoteColors.field,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.notes_rounded,
+                    size: 21,
+                    color: RedNoteColors.secondary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        bubble.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: RedNoteColors.text,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        bubble.description.replaceAll(RegExp(r'\s+'), ' '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: RedNoteColors.secondary,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: context.l10n.edit,
+                  onPressed: onEdit,
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: RedNoteColors.secondary,
+                    size: 19,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final accent = _accents[colorIndex % _accents.length];
     return DecoratedBox(
       decoration: BoxDecoration(

@@ -1,10 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/bubble.dart';
 import '../../l10n/l10n.dart';
-import '../../services/scheduler_service.dart';
 import '../../repositories/bubble_repository.dart';
 import '../../services/bubble_document_store.dart';
 import '../../viewmodels/bubble_view_models.dart';
@@ -25,7 +23,6 @@ class OceanPage extends ConsumerStatefulWidget {
 class _OceanPageState extends ConsumerState<OceanPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animation;
-  DateTime? _testDate;
 
   @override
   void initState() {
@@ -40,21 +37,6 @@ class _OceanPageState extends ConsumerState<OceanPage>
   void dispose() {
     _animation.dispose();
     super.dispose();
-  }
-
-  void _load() => ref.invalidate(todayBubblesProvider);
-
-  Future<void> _pickTestDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _testDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2040),
-      helpText: context.l10n.chooseTestDate,
-    );
-    if (date == null) return;
-    _testDate = DateTime(date.year, date.month, date.day, 12);
-    _load();
   }
 
   @override
@@ -100,12 +82,6 @@ class _OceanPageState extends ConsumerState<OceanPage>
                         onPressed: () =>
                             ref.read(visualThemeProvider.notifier).toggle(),
                       ),
-                      if (kDebugMode)
-                        IconButton(
-                          tooltip: context.l10n.simulateDate,
-                          onPressed: _pickTestDate,
-                          icon: const Icon(Icons.bug_report_outlined),
-                        ),
                       IconButton(
                         tooltip: context.l10n.manageBubbles,
                         onPressed: () => Navigator.push(
@@ -119,16 +95,6 @@ class _OceanPageState extends ConsumerState<OceanPage>
                     ],
                   ),
                 ),
-                if (_testDate != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      context.l10n.testDate(
-                        SchedulerService.dateKey(_testDate!),
-                      ),
-                      style: const TextStyle(color: Color(0xFF9AD6E7)),
-                    ),
-                  ),
                 Expanded(
                   child: ref
                       .watch(todayBubblesProvider)
@@ -144,6 +110,9 @@ class _OceanPageState extends ConsumerState<OceanPage>
                             ? RedNoteGrid(
                                 bubbles: bubbles,
                                 onBubbleTap: _showBubble,
+                                documentStore: ref.read(
+                                  bubbleDocumentStoreProvider,
+                                ),
                               )
                             : BubbleField(
                                 bubbles: bubbles,

@@ -32,21 +32,36 @@ class VisualThemeController extends StateNotifier<VisualTheme> {
   );
 }
 
+/// Muted, content-first palette shared by the RedNote feed and management UI.
+abstract final class RedNoteColors {
+  static const background = Color(0xFFF7F7F7);
+  static const surface = Color(0xFFFFFFFF);
+  static const field = Color(0xFFF5F5F5);
+  static const editor = Color(0xFFFAFAFA);
+  static const active = Color(0xFFFFF0F2);
+  static const border = Color(0xFFE9E9E9);
+  static const text = Color(0xFF222222);
+  static const secondary = Color(0xFF666666);
+  static const muted = Color(0xFF929292);
+  static const accent = Color(0xFFFF2442);
+}
+
 extension MindBubbleTheme on BuildContext {
   bool get isRedNote => Theme.of(this).brightness == Brightness.light;
   Color get appBackground =>
-      isRedNote ? const Color(0xFFFFF8F7) : const Color(0xFF061620);
-  Color get appPanel => isRedNote ? Colors.white : const Color(0xFF0B2733);
+      isRedNote ? RedNoteColors.background : const Color(0xFF061620);
+  Color get appPanel =>
+      isRedNote ? RedNoteColors.surface : const Color(0xFF0B2733);
   Color get appField =>
-      isRedNote ? const Color(0xFFFFF2F2) : const Color(0xFF123846);
+      isRedNote ? RedNoteColors.field : const Color(0xFF123846);
   Color get appEditor =>
-      isRedNote ? const Color(0xFFFFFBFA) : const Color(0xFF0D2A36);
+      isRedNote ? RedNoteColors.editor : const Color(0xFF0D2A36);
   Color get appActive =>
-      isRedNote ? const Color(0xFFFFE4E8) : const Color(0xFF123B49);
+      isRedNote ? RedNoteColors.active : const Color(0xFF123B49);
   Color get appAccent =>
-      isRedNote ? const Color(0xFFFF2442) : const Color(0xFF65D7CB);
-  Color get appBorder => isRedNote ? const Color(0xFFEBCFCF) : Colors.white24;
+      isRedNote ? RedNoteColors.accent : const Color(0xFF65D7CB);
+  Color get appBorder => isRedNote ? RedNoteColors.border : Colors.white24;
   List<Color> get appHeaderGradient => isRedNote
-      ? const [Color(0xFFFF4761), Color(0xFFFF2442)]
+      ? const [Color(0xFFFF4761), RedNoteColors.accent]
       : const [Color(0xFF244DA9), Color(0xFF7648A9)];
 }

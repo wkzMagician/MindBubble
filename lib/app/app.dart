@@ -102,9 +102,9 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
     final locale = ref.watch(localeControllerProvider);
     final redNote = ref.watch(visualThemeProvider) == VisualTheme.redNote;
     final colors = ColorScheme.fromSeed(
-      seedColor: redNote ? const Color(0xFFFF2442) : const Color(0xFF2E7F91),
+      seedColor: redNote ? RedNoteColors.accent : const Color(0xFF2E7F91),
       brightness: redNote ? Brightness.light : Brightness.dark,
-      surface: redNote ? Colors.white : const Color(0xFF0B2531),
+      surface: redNote ? RedNoteColors.surface : const Color(0xFF0B2531),
     );
     return MaterialApp(
       onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
@@ -120,7 +120,7 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
       theme: ThemeData(
         colorScheme: colors,
         scaffoldBackgroundColor: redNote
-            ? const Color(0xFFFFF8F7)
+            ? RedNoteColors.background
             : const Color(0xFF061620),
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
@@ -130,7 +130,9 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
           surfaceTintColor: Colors.transparent,
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: redNote ? Colors.white : const Color(0xFF0B2733),
+          backgroundColor: redNote
+              ? RedNoteColors.surface
+              : const Color(0xFF0B2733),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(redNote ? 16 : 24),
@@ -138,9 +140,7 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: redNote
-              ? const Color(0xFFFFF1F2)
-              : const Color(0xFF123542),
+          fillColor: redNote ? RedNoteColors.field : const Color(0xFF123542),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
@@ -148,9 +148,7 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(
-              color: redNote
-                  ? const Color(0xFFFF2442)
-                  : const Color(0xFF65D7CB),
+              color: redNote ? RedNoteColors.accent : const Color(0xFF65D7CB),
               width: 1.5,
             ),
           ),
