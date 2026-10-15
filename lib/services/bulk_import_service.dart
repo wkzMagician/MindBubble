@@ -12,6 +12,7 @@ import '../models/bubble.dart';
 import '../repositories/bubble_repository.dart';
 import 'bubble_document_store.dart';
 import 'import_service.dart';
+import 'html_note_converter.dart';
 
 /// Normalized note from a local directory, export archive or structured export.
 class ImportCandidate {
@@ -367,6 +368,18 @@ class BulkImportService {
             assets: assets,
           ),
         );
+      } else if (ext == '.html' || ext == '.htm') {
+        final html = utf8.decode(file.value, allowMalformed: true);
+        final converter = const HtmlNoteConverter();
+        // flomo exports contain many memos in one HTML file.
+        if (RegExp(
+          r'<div\b[^>]*class=["\x27][^"\x27]*\bmemo\b',
+          caseSensitive: false,
+        ).hasMatch(html)) {
+          output.addAll(converter.readFlomo(name, html, files));
+        } else {
+          output.add(converter.singlePage(name, html, files));
+        }
       } else if (ext == '.enex') {
         output.addAll(_readEnex(utf8.decode(file.value, allowMalformed: true)));
       } else if (ext == '.csv') {

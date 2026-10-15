@@ -1,43 +1,42 @@
-# MindBubble 分来源增量导入指南
+# MindBubble：10 个来源软件与通用导入
 
-## 操作流程
+在「管理泡泡」点击「导入」，左侧选择国际软件（5）、国内软件（5）或「通用导入」，右侧按来源显示专属方式与操作说明。
 
-打开「管理泡泡」，点击右上角导入按钮。导入工作区左侧选择来源软件，右侧展示该软件支持的导入方式和准备步骤：
+## 当前已实现
 
-1. 选择来源软件及推荐导入方式，需要时切换到另一种方式。
-2. 选择文件夹、导出文件，或通过 Notion Integration Token 读取授权页面。
-3. 查看扫描结果：新增、更新、未变化、冲突。发生冲突时选择保留本地、采用导入内容或另存副本。
-4. 确认导入。后续重新导入相同来源，可自动识别变化。
+| 来源 | 导入入口 | 数据格式 |
+| --- | --- | --- |
+| Obsidian | Vault 文件夹、文件/ZIP | Markdown、相对图片 |
+| Notion | 导出 ZIP、Integration API | Markdown + CSV 或授权页面 |
+| Evernote | ENEX 文件/ZIP | ENEX、图片 |
+| Google Keep | Takeout ZIP、JSON | 文本、清单、标签 |
+| Microsoft OneNote | Microsoft Graph Token、HTML/ZIP | 页面 HTML 转 Markdown |
+| 思源笔记 | 本机内核 API、Markdown 目录/ZIP | Markdown |
+| 语雀 | 文件/目录 | 已导出的 Markdown、HTML、ZIP |
+| FlowUs 息流 | 文件/目录 | Markdown、HTML、CSV、ZIP |
+| 飞书文档 | 文件/目录 | 已转换的 Markdown、HTML、CSV、ZIP |
+| flomo 浮墨笔记 | HTML/ZIP | 每条 memo、时间戳、图片 |
+| 通用导入 | 文件/目录 | Markdown、HTML、JSON、CSV、XLSX、ENEX、ZIP |
 
-| 来源软件 | 推荐方式 | 其他方式 | 增量识别依据 |
-| --- | --- | --- | --- |
-| Obsidian | Vault 根目录（含 Markdown 与图片） | ZIP、Markdown 文件 | 路径及来源标识 |
-| Logseq | Graph 根目录（pages / journals / assets） | ZIP、Markdown 文件 | 路径及来源标识 |
-| Notion | Markdown & CSV 导出 ZIP | Integration API | 页面 ID 或导出路径 |
-| Evernote | ENEX 文件 | 多文件 ENEX、ENEX ZIP | GUID |
-| Google Keep | Google Takeout ZIP | 多个 Keep JSON | ID 或文件路径 |
-| Markdown | Markdown 文件夹 | Markdown 文件、ZIP | 相对路径 |
-| CSV / Excel | CSV、XLSX 文件 | 多文件 | 表格行的 ID 或标题 |
-| MindBubble | mind-bubble-import JSON | — | 原始 ID |
+Logseq Graph、MindBubble 标准 JSON 等可使用通用导入。
 
-## Notion API
+## API 连接说明
 
-在 Notion 创建 Internal Integration，将要导入的页面共享给它。在「Notion → Notion API 连接」中输入 Integration Token，点击「读取 Notion 页面」。Token 只在当前导入窗口中使用。API 仅能读取授予 Integration 权限的页面。
+- Notion：创建 Internal Integration，将待导入页面共享给 Integration，再输入 Token。
+- OneNote：输入具有 Notes.Read 用户委托权限的有效 Microsoft Graph Access Token。已实现读取页面与文本；尚未配置 OAuth 一键登录，图片附件的保真度有待扩展。
+- 思源笔记：在同一设备上运行思源内核，复制「设置 → 关于」中的 API Token。读取地址固定为 http://127.0.0.1:6806。移动端建议使用 Markdown 导出文件。
+- 语雀、FlowUs、飞书：目前使用导出文件入口，开放平台账号授权方式仍需后续实现。飞书原生 Docx、Word、PDF 需要先转换成受支持格式。
 
-## 来源标识
+以上 API 是主动触发的单次读取，令牌只保存在导入窗口内存里。OAuth 一键连接、自动定期同步、Android 系统分享接收和 iOS Share Extension 需后续实现。
 
-每个来源软件都有独立的来源标识，位于「增量导入设置」中。
+## 增量与冲突
 
-- Obsidian、Logseq 和通用 Markdown 文件夹默认使用软件名与文件夹名，例如 `obsidian:MyVault`。
-- 导出文件默认使用软件名作为来源标识，以便多次导出时自动匹配新增和更新。
-- 导入不同的 Vault、账号或互不相关的数据集合时，为其设置不同且稳定的来源标识。重复导入同一集合时继续使用相同标识。
+扫描后预览新增、更新、未变化、冲突。冲突可以保留本地、采用来源或另存副本。相同来源再次导入时沿用相同来源标识；不同 Vault、账号或集合可以通过「增量导入设置」使用不同标识。
 
-系统根据来源标识、笔记 ID 和内容哈希判断新增、更新、未变化及冲突，导入记录保存在应用支持目录的 `import-ledger.json`。
+来源记录保存在 import-ledger.json 中。相对图片存入 MindBubble 内容寻址附件库，文件与图片可参与 WebDAV 同步。
 
-## 图片与同步
+## 手机和平板
 
-ZIP 与目录中的相对图片导入到 `assets` 对象目录，并同步更新 Markdown 引用。支持 PNG、JPG、JPEG、GIF、WEBP、BMP。图片与文档共用 WebDAV 自动同步流程。
+Android/iOS 可以选择已有的 ZIP 或其他导出文件。文件夹型来源的持久授权和后台监听需要进一步适配 Android SAF 和 iOS 安全作用域，不应将桌面文件夹扫描视作移动端持续同步。
 
-ZIP 导入会检查压缩包体积、解压总量、路径安全和文件数量。重复导入只处理需要更新的笔记，来源中删除的笔记仍保留在本地。
-
-首页现在采用独立于日期的手动刷新抽取逻辑，支持点击「刷新」及 Windows F5 快捷键。
+首页刷新功能独立于日期，Windows 还支持 F5。

@@ -10,6 +10,8 @@ import '../../repositories/bubble_repository.dart';
 import '../../services/bubble_document_store.dart';
 import '../../services/bulk_import_service.dart';
 import '../../services/notion_import_adapter.dart';
+import '../../services/onenote_graph_adapter.dart';
+import '../../services/siyuan_import_adapter.dart';
 import '../../services/visual_theme_service.dart';
 import 'import_source_spec.dart';
 
@@ -25,6 +27,8 @@ class ImportWizard extends ConsumerStatefulWidget {
 class _ImportWizardState extends ConsumerState<ImportWizard> {
   final _identity = TextEditingController(text: importSourceSpecs.first.id);
   final _notionToken = TextEditingController();
+  final _oneNoteToken = TextEditingController();
+  final _siyuanToken = TextEditingController();
   ImportSourceSpec _selected = importSourceSpecs.first;
   ImportEntryMethod _method = importSourceSpecs.first.recommended;
   ImportPreview? _preview;
@@ -43,6 +47,8 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
   void dispose() {
     _identity.dispose();
     _notionToken.dispose();
+    _oneNoteToken.dispose();
+    _siyuanToken.dispose();
     super.dispose();
   }
 
@@ -54,6 +60,8 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
       _identity.text = source.id;
       _identityEdited = false;
       _notionToken.clear();
+      _oneNoteToken.clear();
+      _siyuanToken.clear();
       _preview = null;
       _pickedLabel = null;
       _error = null;
@@ -76,6 +84,14 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
     final currentMethod = _method;
     if (currentMethod == ImportEntryMethod.notionApi) {
       await _scanNotion();
+      return;
+    }
+    if (currentMethod == ImportEntryMethod.oneNoteGraph) {
+      await _scanOneNote();
+      return;
+    }
+    if (currentMethod == ImportEntryMethod.siyuanApi) {
+      await _scanSiYuan();
       return;
     }
     try {
@@ -125,6 +141,35 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
     final client = NotionImportAdapter();
     try {
       await _scan('Notion API', () => client.load(_notionToken.text.trim()));
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<void> _scanOneNote() async {
+    if (_oneNoteToken.text.trim().isEmpty) {
+      setState(() => _error = '请填写 Microsoft Graph Access Token');
+      return;
+    }
+    final client = OneNoteGraphAdapter();
+    try {
+      await _scan(
+        'Microsoft Graph',
+        () => client.load(_oneNoteToken.text.trim()),
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<void> _scanSiYuan() async {
+    if (_siyuanToken.text.trim().isEmpty) {
+      setState(() => _error = '请填写思源 API Token');
+      return;
+    }
+    final client = SiYuanImportAdapter();
+    try {
+      await _scan('思源本地内核', () => client.load(_siyuanToken.text.trim()));
     } finally {
       client.close();
     }
@@ -318,7 +363,30 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
     }
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
-      children: [heading, ...cards],
+      children: [
+        heading,
+        for (final group in ImportSourceGroup.values) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 11, 10, 6),
+            child: Text(
+              switch (group) {
+                ImportSourceGroup.international => '国际软件',
+                ImportSourceGroup.china => '国内软件',
+                ImportSourceGroup.generic => '其他',
+              },
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final source in importSourceSpecs.where(
+            (source) => source.group == group,
+          ))
+            _sourceCard(source, vertical: true),
+        ],
+      ],
     );
   }
 
@@ -446,12 +514,44 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
             ),
             const SizedBox(height: 12),
           ],
+          if (_method == ImportEntryMethod.oneNoteGraph) ...[
+            TextField(
+              controller: _oneNoteToken,
+              enabled: !_busy,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(
+                labelText: 'Microsoft Graph Access Token',
+                helperText: '仅本次使用；需具有 Notes.Read 委托权限',
+                prefixIcon: Icon(Icons.key_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_method == ImportEntryMethod.siyuanApi) ...[
+            TextField(
+              controller: _siyuanToken,
+              enabled: !_busy,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(
+                labelText: '思源 API Token',
+                helperText: '思源：设置 → 关于 → API Token；内核需在本设备运行',
+                prefixIcon: Icon(Icons.key_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.icon(
               onPressed: _busy ? null : _selectInput,
               icon: Icon(
-                _method == ImportEntryMethod.notionApi
+                (_method == ImportEntryMethod.notionApi ||
+                        _method == ImportEntryMethod.oneNoteGraph ||
+                        _method == ImportEntryMethod.siyuanApi)
                     ? Icons.cloud_download_outlined
                     : _method == ImportEntryMethod.folder
                     ? Icons.folder_open_outlined
@@ -461,6 +561,10 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
               label: Text(
                 _method == ImportEntryMethod.notionApi
                     ? '读取 Notion 页面'
+                    : _method == ImportEntryMethod.oneNoteGraph
+                    ? '读取 OneNote 页面'
+                    : _method == ImportEntryMethod.siyuanApi
+                    ? '读取思源文档'
                     : _method == ImportEntryMethod.folder
                     ? '选择 ${source.title} 文件夹'
                     : '选择 ${source.title} 导出文件',
@@ -613,6 +717,10 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
         ? '1. 在 Notion 创建 Internal Integration，复制 Integration Token。\n'
               '2. 将需要导入的页面共享给该 Integration。\n'
               '3. 填写 Token 并点击读取；仅导入授权可访问的页面。'
+        : _method == ImportEntryMethod.oneNoteGraph
+        ? '使用具有 Notes.Read 权限的用户委托 Access Token。此处提供临时令牌导入；每次读取需有效令牌，OAuth 一键授权尚未配置。'
+        : _method == ImportEntryMethod.siyuanApi
+        ? '在电脑端运行思源笔记，从设置 → 关于取得 API Token。MindBubble 将连接本设备 127.0.0.1:6806 的内核读取最多 200 篇文档。移动端建议使用 Markdown 导出包。'
         : _selected.instructions;
     return Container(
       padding: const EdgeInsets.all(13),
