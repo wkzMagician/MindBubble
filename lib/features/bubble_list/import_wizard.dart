@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -9,20 +10,29 @@ import '../../repositories/bubble_repository.dart';
 import '../../services/bubble_document_store.dart';
 import '../../services/bulk_import_service.dart';
 import '../../services/notion_import_adapter.dart';
+import '../../services/visual_theme_service.dart';
+import 'import_source_spec.dart';
 
+/// Choose an application first; each application exposes only compatible
+/// import methods, with a shared incremental preview and conflict workflow.
 class ImportWizard extends ConsumerStatefulWidget {
   const ImportWizard({super.key});
+
   @override
   ConsumerState<ImportWizard> createState() => _ImportWizardState();
 }
 
 class _ImportWizardState extends ConsumerState<ImportWizard> {
-  final _source = TextEditingController();
+  final _identity = TextEditingController(text: importSourceSpecs.first.id);
   final _notionToken = TextEditingController();
+  ImportSourceSpec _selected = importSourceSpecs.first;
+  ImportEntryMethod _method = importSourceSpecs.first.recommended;
   ImportPreview? _preview;
-  bool _busy = false;
-  String? _error;
   ImportConflictChoice _conflictChoice = ImportConflictChoice.keepLocal;
+  String? _pickedLabel;
+  String? _error;
+  bool _identityEdited = false;
+  bool _busy = false;
 
   BulkImportService get _service => BulkImportService(
     ref.read(bubbleRepositoryProvider),
@@ -31,40 +41,70 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
 
   @override
   void dispose() {
-    _source.dispose();
+    _identity.dispose();
     _notionToken.dispose();
     super.dispose();
   }
 
-  Future<void> _select({required bool folder}) async {
+  void _chooseSource(ImportSourceSpec source) {
+    if (_busy) return;
+    setState(() {
+      _selected = source;
+      _method = source.recommended;
+      _identity.text = source.id;
+      _identityEdited = false;
+      _notionToken.clear();
+      _preview = null;
+      _pickedLabel = null;
+      _error = null;
+      _conflictChoice = ImportConflictChoice.keepLocal;
+    });
+  }
+
+  void _chooseMethod(ImportEntryMethod method) {
+    if (_busy || !_selected.allows(method)) return;
+    setState(() {
+      _method = method;
+      _preview = null;
+      _pickedLabel = null;
+      _error = null;
+    });
+  }
+
+  Future<void> _selectInput() async {
+    final currentSource = _selected;
+    final currentMethod = _method;
+    if (currentMethod == ImportEntryMethod.notionApi) {
+      await _scanNotion();
+      return;
+    }
     try {
-      if (folder) {
-        final dir = await FilePicker.platform.getDirectoryPath(
-          dialogTitle: '选择笔记文件夹',
+      if (currentMethod == ImportEntryMethod.folder) {
+        final directory = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: '选择 ${currentSource.title} 笔记目录',
         );
-        if (dir == null) return;
-        await _scan(dir, () => _service.readDirectory(Directory(dir)));
+        if (directory == null || !mounted) return;
+        await _scan(
+          directory,
+          () => _service.readDirectory(Directory(directory)),
+        );
       } else {
-        final result = await FilePicker.platform.pickFiles(
+        final picked = await FilePicker.platform.pickFiles(
           type: FileType.custom,
-          allowedExtensions: [
-            'zip',
-            'md',
-            'markdown',
-            'enex',
-            'json',
-            'csv',
-            'xlsx',
-          ],
+          allowedExtensions: currentSource.extensions,
           allowMultiple: true,
+          dialogTitle: '选择 ${currentSource.title} 导出文件',
         );
-        if (result == null) return;
-        final files = result.files
-            .where((file) => file.path != null)
-            .map((file) => File(file.path!))
+        if (picked == null || !mounted) return;
+        final files = picked.files
+            .where((entry) => entry.path != null)
+            .map((entry) => File(entry.path!))
             .toList();
         if (files.isEmpty) return;
-        await _scan(files.first.path, () async {
+        final label = files.length == 1
+            ? path.basename(files.single.path)
+            : '${files.length} 个文件';
+        await _scan(label, () async {
           final notes = <ImportCandidate>[];
           for (final file in files) {
             notes.addAll(await _service.readFile(file));
@@ -73,27 +113,25 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
         });
       }
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _error = '$error';
-          _busy = false;
-        });
-      }
+      if (mounted) setState(() => _error = error.toString());
     }
   }
 
   Future<void> _scanNotion() async {
-    if (_source.text.trim().isEmpty) _source.text = 'notion';
+    if (_notionToken.text.trim().isEmpty) {
+      setState(() => _error = '请填写 Notion Integration Token');
+      return;
+    }
     final client = NotionImportAdapter();
     try {
-      await _scan('notion', () => client.load(_notionToken.text));
+      await _scan('Notion API', () => client.load(_notionToken.text.trim()));
     } finally {
       client.close();
     }
   }
 
   Future<void> _scan(
-    String selected,
+    String inputLabel,
     Future<List<ImportCandidate>> Function() reader,
   ) async {
     setState(() {
@@ -102,14 +140,32 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
       _preview = null;
     });
     try {
-      if (_source.text.trim().isEmpty) {
-        _source.text = path.basenameWithoutExtension(selected);
+      if (!_identityEdited) {
+        _identity.text = _selected.suggestedIdentity(
+          _method == ImportEntryMethod.folder ? inputLabel : null,
+        );
       }
-      final notes = await reader();
-      final preview = await _service.preview(_source.text.trim(), notes);
-      if (mounted) setState(() => _preview = preview);
+      final sourceId = _identity.text.trim();
+      if (sourceId.isEmpty) {
+        throw const FormatException('请输入用于后续增量导入的来源标识');
+      }
+      final candidates = await reader();
+      if (candidates.isEmpty) {
+        throw FormatException('未找到可导入的笔记。请确认选择了 ${_selected.title} 支持的导出格式。');
+      }
+      final preview = await _service.preview(sourceId, candidates);
+      if (preview.items.isEmpty) {
+        throw const FormatException('找到文件，但其中没有有效的笔记标题和正文');
+      }
+      if (mounted) {
+        setState(() {
+          _pickedLabel = inputLabel;
+          _preview = preview;
+          _conflictChoice = ImportConflictChoice.keepLocal;
+        });
+      }
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -129,7 +185,7 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
       );
       if (mounted) Navigator.of(context).pop(count);
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -137,147 +193,565 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
 
   @override
   Widget build(BuildContext context) {
-    final preview = _preview;
-    return AlertDialog(
-      title: const Text('批量增量导入'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _source,
-                enabled: !_busy,
-                decoration: const InputDecoration(
-                  labelText: '来源名称',
-                  helperText: '同一来源每次使用相同名称，自动识别新增和更新',
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
+    final viewport = MediaQuery.sizeOf(context);
+    final wide = viewport.width >= 740;
+    final activeColor = context.appAccent;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      backgroundColor: context.appPanel,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SizedBox(
+        width: min(viewport.width - 32, 1050),
+        height: min(viewport.height - 32, 770),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 14, 14),
+              child: Row(
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _select(folder: true),
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('选择文件夹'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _select(folder: false),
-                    icon: const Icon(Icons.upload_file),
-                    label: const Text('选择文件 / ZIP'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _notionToken,
-                obscureText: true,
-                enabled: !_busy && _preview == null,
-                decoration: const InputDecoration(
-                  labelText: 'Notion Integration Token',
-                  helperText: '仅本次连接使用；请先将页面共享给 Notion Integration',
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: _busy ? null : _scanNotion,
-                  icon: const Icon(Icons.cloud_download_outlined),
-                  label: const Text('从 Notion API 增量导入'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '支持 Obsidian / Logseq Markdown、Notion ZIP、Evernote ENEX、Google Keep JSON、CSV 和 XLSX',
-                style: TextStyle(fontSize: 12),
-              ),
-              if (_busy)
-                const Padding(
-                  padding: EdgeInsets.all(18),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                  Icon(Icons.move_to_inbox_outlined, color: activeColor),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '从其他应用导入',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
-                ),
-              if (preview != null) ...[
-                const Divider(height: 30),
-                Text(
-                  '扫描结果 · ${preview.items.length} 条笔记',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 10,
-                  children: [
-                    _count(preview, ImportAction.add, '新增'),
-                    _count(preview, ImportAction.update, '更新'),
-                    _count(preview, ImportAction.unchanged, '未变化'),
-                    _count(preview, ImportAction.conflict, '冲突'),
-                  ],
-                ),
-                if (preview.count(ImportAction.conflict) > 0) ...[
-                  const SizedBox(height: 15),
-                  DropdownButtonFormField<ImportConflictChoice>(
-                    initialValue: _conflictChoice,
-                    decoration: const InputDecoration(labelText: '冲突处理'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: ImportConflictChoice.keepLocal,
-                        child: Text('保留本地'),
-                      ),
-                      DropdownMenuItem(
-                        value: ImportConflictChoice.useSource,
-                        child: Text('采用来源'),
-                      ),
-                      DropdownMenuItem(
-                        value: ImportConflictChoice.duplicate,
-                        child: Text('保存副本'),
-                      ),
-                    ],
-                    onChanged: (choice) {
-                      if (choice != null) {
-                        setState(() => _conflictChoice = choice);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '冲突示例：${preview.items.where((e) => e.action == ImportAction.conflict).take(4).map((e) => e.note.title).join('、')}',
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
                   ),
                 ],
-              ],
-            ],
-          ),
+              ),
+            ),
+            Divider(height: 1, color: context.appBorder),
+            Expanded(
+              child: wide
+                  ? Row(
+                      children: [
+                        SizedBox(
+                          width: 240,
+                          child: _sourceList(vertical: true),
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: context.appBorder,
+                        ),
+                        Expanded(child: _detailPanel()),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        SizedBox(
+                          height: 120,
+                          child: _sourceList(vertical: false),
+                        ),
+                        Divider(height: 1, color: context.appBorder),
+                        Expanded(child: _detailPanel()),
+                      ],
+                    ),
+            ),
+            if (_busy) const LinearProgressIndicator(minHeight: 2),
+            Divider(height: 1, color: context.appBorder),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      _preview == null
+                          ? '选择来源应用，按提示导入'
+                          : '已扫描 ${_preview!.items.length} 条笔记',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _busy || _preview == null ? null : _commit,
+                    icon: const Icon(Icons.check, size: 18),
+                    label: const Text('确认导入'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _busy ? null : () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
-        FilledButton.icon(
-          onPressed: _busy || preview == null ? null : _commit,
-          icon: const Icon(Icons.check),
-          label: const Text('确认导入'),
-        ),
-      ],
     );
   }
 
-  Widget _count(ImportPreview preview, ImportAction action, String label) =>
-      Chip(label: Text('$label ${preview.count(action)}'));
+  Widget _sourceList({required bool vertical}) {
+    final heading = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 17, 12, 10),
+      child: Text(
+        '来源应用',
+        style: TextStyle(
+          fontSize: 12,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+    final cards = [
+      for (final spec in importSourceSpecs)
+        _sourceCard(spec, vertical: vertical),
+    ];
+    if (!vertical) {
+      return ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 12),
+        children: cards,
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [heading, ...cards],
+    );
+  }
+
+  Widget _sourceCard(ImportSourceSpec source, {required bool vertical}) {
+    final selected = source.app == _selected.app;
+    final accent = context.appAccent;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: vertical ? 9 : 4, vertical: 3),
+      child: Material(
+        color: selected ? context.appActive : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: selected
+                ? accent.withValues(alpha: .35)
+                : Colors.transparent,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: _busy ? null : () => _chooseSource(source),
+          child: Container(
+            width: vertical ? null : 148,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  source.icon,
+                  size: 22,
+                  color: selected
+                      ? accent
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        source.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                      if (vertical)
+                        Text(
+                          source.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailPanel() {
+    final source = _selected;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(25, 20, 25, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(source.icon, size: 27, color: context.appAccent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      source.title,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    Text(
+                      source.subtitle,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(source.description),
+          const SizedBox(height: 19),
+          Text('导入方式', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          for (final method in source.methods)
+            _methodCard(method, recommended: method == source.recommended),
+          const SizedBox(height: 15),
+          _instructions(),
+          const SizedBox(height: 16),
+          if (_method == ImportEntryMethod.notionApi) ...[
+            TextField(
+              controller: _notionToken,
+              enabled: !_busy,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Notion Integration Token',
+                helperText: '仅用于本次导入；需要先将页面共享给 Integration',
+                prefixIcon: Icon(Icons.key_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _selectInput,
+              icon: Icon(
+                _method == ImportEntryMethod.notionApi
+                    ? Icons.cloud_download_outlined
+                    : _method == ImportEntryMethod.folder
+                    ? Icons.folder_open_outlined
+                    : Icons.upload_file_outlined,
+                size: 19,
+              ),
+              label: Text(
+                _method == ImportEntryMethod.notionApi
+                    ? '读取 Notion 页面'
+                    : _method == ImportEntryMethod.folder
+                    ? '选择 ${source.title} 文件夹'
+                    : '选择 ${source.title} 导出文件',
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ExpansionTile(
+            key: ValueKey(source.app),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 8),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            title: const Text('增量导入设置', style: TextStyle(fontSize: 13)),
+            subtitle: Text(
+              '来源标识：${_identity.text}',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            children: [
+              TextField(
+                controller: _identity,
+                enabled: !_busy,
+                decoration: const InputDecoration(
+                  labelText: '来源标识',
+                  helperText: '同一来源重复导入请保持此标识一致，以识别新增、更新和冲突',
+                ),
+                onChanged: (_) {
+                  setState(() {
+                    _identityEdited = true;
+                    _preview = null;
+                    _pickedLabel = null;
+                  });
+                },
+              ),
+            ],
+          ),
+          if (_pickedLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_outline, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '已扫描：${_pickedLabel!}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (_preview != null) _previewSection(_preview!),
+        ],
+      ),
+    );
+  }
+
+  Widget _methodCard(ImportEntryMethod method, {required bool recommended}) {
+    final active = _method == method;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Material(
+        color: active ? context.appActive : context.appField,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: active
+                ? context.appAccent.withValues(alpha: .6)
+                : context.appBorder,
+          ),
+        ),
+        child: InkWell(
+          onTap: _busy ? null : () => _chooseMethod(method),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+            child: Row(
+              children: [
+                Icon(
+                  active ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: active
+                      ? context.appAccent
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: 19,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              importMethodLabel(method),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (recommended) ...[
+                            const SizedBox(width: 9),
+                            Text(
+                              '推荐',
+                              style: TextStyle(
+                                color: context.appAccent,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      Text(
+                        importMethodDescription(method),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _instructions() {
+    final notionApi =
+        _selected.app == ImportSourceApp.notion &&
+        _method == ImportEntryMethod.notionApi;
+    final text = notionApi
+        ? '1. 在 Notion 创建 Internal Integration，复制 Integration Token。\n'
+              '2. 将需要导入的页面共享给该 Integration。\n'
+              '3. 填写 Token 并点击读取；仅导入授权可访问的页面。'
+        : _selected.instructions;
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: context.appField,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: context.appBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: context.appAccent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, height: 1.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewSection(ImportPreview preview) {
+    final changed =
+        preview.count(ImportAction.add) +
+        preview.count(ImportAction.update) +
+        preview.count(ImportAction.conflict);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.appField,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.appBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '导入预览 · ${preview.items.length} 条',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              _countChip(preview, ImportAction.add, '新增'),
+              _countChip(preview, ImportAction.update, '更新'),
+              _countChip(preview, ImportAction.unchanged, '未变化'),
+              _countChip(preview, ImportAction.conflict, '冲突'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            changed == 0 ? '笔记已是最新；重复导入会跳过未变化的内容' : '确认后只处理新增、更新和需要解决的冲突',
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (preview.count(ImportAction.conflict) > 0) ...[
+            const SizedBox(height: 14),
+            DropdownButtonFormField<ImportConflictChoice>(
+              initialValue: _conflictChoice,
+              decoration: const InputDecoration(labelText: '冲突处理方式'),
+              items: const [
+                DropdownMenuItem(
+                  value: ImportConflictChoice.keepLocal,
+                  child: Text('保留本地内容'),
+                ),
+                DropdownMenuItem(
+                  value: ImportConflictChoice.useSource,
+                  child: Text('采用导入内容'),
+                ),
+                DropdownMenuItem(
+                  value: ImportConflictChoice.duplicate,
+                  child: Text('另存副本'),
+                ),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (value) {
+                      if (value != null) {
+                        setState(() => _conflictChoice = value);
+                      }
+                    },
+            ),
+          ],
+          const SizedBox(height: 10),
+          for (final item in preview.items.take(5))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Icon(
+                    _actionIcon(item.action),
+                    size: 14,
+                    color: item.action == ImportAction.conflict
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item.note.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (preview.items.length > 5)
+            Text(
+              '另有 ${preview.items.length - 5} 条笔记',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _countChip(ImportPreview preview, ImportAction action, String label) {
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      label: Text('$label ${preview.count(action)}'),
+    );
+  }
+
+  IconData _actionIcon(ImportAction action) => switch (action) {
+    ImportAction.add => Icons.add_circle_outline,
+    ImportAction.update => Icons.update,
+    ImportAction.unchanged => Icons.remove_circle_outline,
+    ImportAction.conflict => Icons.warning_amber_rounded,
+  };
 }
