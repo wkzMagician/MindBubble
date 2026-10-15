@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../../l10n/l10n.dart';
 import '../../models/bubble.dart';
 import '../../services/bubble_document_store.dart';
 import '../../services/visual_theme_service.dart';
@@ -61,9 +62,9 @@ class RedNoteGrid extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(2, 6, 2, 20),
                   child: Row(
                     children: [
-                      const Text(
-                        '今日浮现',
-                        style: TextStyle(
+                      Text(
+                        context.l10n.feedTitle,
+                        style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
                           color: RedNoteColors.text,

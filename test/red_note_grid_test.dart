@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mind_bubble/features/ocean/red_note_grid.dart';
+import 'package:mind_bubble/l10n/app_localizations.dart';
 import 'package:mind_bubble/models/bubble.dart';
 import 'package:mind_bubble/services/visual_theme_service.dart';
 
@@ -26,6 +27,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData.light(useMaterial3: true),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         home: Scaffold(
           body: RedNoteGrid(
             bubbles: List.generate(5, note),
@@ -35,7 +39,7 @@ void main() {
       ),
     );
 
-    expect(find.text('今日浮现'), findsOneWidget);
+    expect(find.text('灵感流'), findsOneWidget);
     expect(find.text('5 条笔记'), findsOneWidget);
     expect(find.text('笔记 0'), findsOneWidget);
     final whiteCards = tester
@@ -59,6 +63,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData.light(useMaterial3: true),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         home: Scaffold(
           body: RedNoteGrid(
             bubbles: List.generate(4, note),

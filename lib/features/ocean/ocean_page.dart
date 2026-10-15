@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/bubble.dart';
@@ -39,10 +40,13 @@ class _OceanPageState extends ConsumerState<OceanPage>
     super.dispose();
   }
 
+  void _refreshBubbles() =>
+      ref.read(homeRefreshVersionProvider.notifier).state++;
+
   @override
   Widget build(BuildContext context) {
     final redNote = ref.watch(visualThemeProvider) == VisualTheme.redNote;
-    return Scaffold(
+    final page = Scaffold(
       body: Stack(
         children: [
           Positioned.fill(
@@ -74,6 +78,12 @@ class _OceanPageState extends ConsumerState<OceanPage>
                           ],
                         ),
                       ),
+                      OutlinedButton.icon(
+                        onPressed: _refreshBubbles,
+                        icon: const Icon(Icons.refresh_rounded, size: 19),
+                        label: Text(context.l10n.refreshBubbles),
+                      ),
+                      const SizedBox(width: 8),
                       IconButton(
                         tooltip: redNote ? '切换海洋主题' : '切换小红书主题',
                         icon: Icon(
@@ -97,7 +107,7 @@ class _OceanPageState extends ConsumerState<OceanPage>
                 ),
                 Expanded(
                   child: ref
-                      .watch(todayBubblesProvider)
+                      .watch(displayBubblesProvider)
                       .when(
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
@@ -115,6 +125,9 @@ class _OceanPageState extends ConsumerState<OceanPage>
                                 ),
                               )
                             : BubbleField(
+                                key: ValueKey(
+                                  ref.watch(homeRefreshVersionProvider),
+                                ),
                                 bubbles: bubbles,
                                 onBubbleTap: _showBubble,
                               ),
@@ -125,6 +138,10 @@ class _OceanPageState extends ConsumerState<OceanPage>
           ),
         ],
       ),
+    );
+    return CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.f5): _refreshBubbles},
+      child: Focus(autofocus: true, child: page),
     );
   }
 

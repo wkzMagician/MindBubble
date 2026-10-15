@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mind_bubble/features/ocean/ocean_page.dart';
@@ -16,7 +17,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          todayBubblesProvider.overrideWith((_) async => [_bubble()]),
+          displayBubblesProvider.overrideWith((ref) async {
+            ref.watch(homeRefreshVersionProvider);
+            return [_bubble()];
+          }),
         ],
         child: MaterialApp(
           theme: ThemeData.dark(useMaterial3: true),
@@ -32,6 +36,47 @@ void main() {
 
     expect(find.byType(OceanPage), findsOneWidget);
     expect(find.text('A calm idea'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('desktop refresh button redraws bubbles without a date', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 650);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          displayBubblesProvider.overrideWith((ref) async {
+            final generation = ref.watch(homeRefreshVersionProvider);
+            return [_bubble().copyWith(title: 'Idea $generation')];
+          }),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: const OceanPage(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Idea 0'), findsOneWidget);
+    expect(find.text('Refresh'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.refresh_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Idea 1'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.f5);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Idea 2'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

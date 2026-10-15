@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bubble.dart';
 import '../repositories/bubble_repository.dart';
 import '../services/bubble_document_store.dart';
-import '../services/scheduler_service.dart';
+import '../services/bubble_refresh_service.dart';
 
 final bubblesProvider = FutureProvider.family<List<Bubble>, String>((
   ref,
@@ -14,8 +14,12 @@ final bubblesProvider = FutureProvider.family<List<Bubble>, String>((
   return ref.watch(bubbleRepositoryProvider).getAll(query: query);
 });
 
-final todayBubblesProvider = FutureProvider<List<Bubble>>((ref) async {
+/// Incrementing this value requests a fresh, date-independent homepage draw.
+final homeRefreshVersionProvider = StateProvider<int>((_) => 0);
+
+final displayBubblesProvider = FutureProvider<List<Bubble>>((ref) async {
   ref.watch(bubbleRevisionProvider);
   ref.watch(documentStoreRevisionProvider);
-  return ref.watch(schedulerProvider).getOrCreateDailyBubbles();
+  ref.watch(homeRefreshVersionProvider);
+  return ref.watch(bubbleRefreshServiceProvider).refresh();
 });
