@@ -19,6 +19,20 @@ void main() {
     ),
   );
 
+  testWidgets('raw Markdown view preserves complex tables and blank lines', (
+    tester,
+  ) async {
+    const raw = '## Title\n\n\n| a | b |\n| - | - |\n| x | y |';
+    final controller = TextEditingController(text: raw);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(editor(controller));
+    await tester.tap(find.byTooltip('源码'));
+    await tester.pump();
+    expect(controller.text, raw);
+    final rawField = tester.widget<TextField>(find.byType(TextField));
+    expect(rawField.controller!.text, raw);
+  });
+
   testWidgets('Enter commits the active block and renders it', (tester) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);

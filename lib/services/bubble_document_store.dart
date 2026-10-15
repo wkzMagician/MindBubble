@@ -250,6 +250,46 @@ class BubbleDocumentStore {
     );
   }
 
+  /// Attachments use the same object store as documents, so Dartloom/WebDAV
+  /// includes them in its ordinary incremental synchronization pipeline.
+  Future<String> storeAttachment(Uint8List bytes, String filename) async {
+    final extension = path.extension(filename).toLowerCase();
+    if (!const {
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp',
+      '.bmp',
+    }.contains(extension)) {
+      throw const FormatException('Unsupported image format');
+    }
+    final digest = sha256.convert(bytes).toString();
+    final key = 'assets/$digest$extension';
+    if (objectStore case final store?) {
+      await store.write(key, bytes);
+    } else {
+      final file = File(path.join(root.path, 'assets', '$digest$extension'));
+      await file.parent.create(recursive: true);
+      if (!await file.exists()) await file.writeAsBytes(bytes, flush: true);
+    }
+    notifyChanged();
+    return key;
+  }
+
+  Future<Uint8List?> readAttachment(String key) async {
+    if (!RegExp(
+      r'^assets/[0-9a-f]{64}\.(png|jpg|jpeg|gif|webp|bmp)$',
+    ).hasMatch(key)) {
+      return null;
+    }
+    if (objectStore case final store?) return store.read(key);
+    final file = File(
+      path.join(root.path, key.replaceAll('/', path.separator)),
+    );
+    return await file.exists() ? file.readAsBytes() : null;
+  }
+
   Future<void> save(Bubble bubble) async {
     await writeRaw(
       bubble.id,

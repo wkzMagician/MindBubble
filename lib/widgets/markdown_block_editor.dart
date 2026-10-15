@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+
+import '../services/bubble_document_store.dart';
+import '../services/visual_theme_service.dart';
+import 'markdown_content.dart';
 
 import '../l10n/l10n.dart';
 
@@ -8,12 +14,14 @@ class MarkdownBlockEditor extends StatefulWidget {
   const MarkdownBlockEditor({
     required this.controller,
     this.errorText,
+    this.documentStore,
     this.onChanged,
     super.key,
   });
 
   final TextEditingController controller;
   final String? errorText;
+  final BubbleDocumentStore? documentStore;
   final ValueChanged<String>? onChanged;
 
   @override
@@ -23,7 +31,8 @@ class MarkdownBlockEditor extends StatefulWidget {
 class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
   final _activeKey = GlobalKey();
   final _focusNode = FocusNode();
-  late final List<_MarkdownBlock> _blocks;
+  late List<_MarkdownBlock> _blocks;
+  bool _rawMode = false;
   late TextEditingController _activeController;
   late int _activeIndex;
   bool _settingActiveText = false;
@@ -71,11 +80,11 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: const Color(0xFF0D2A36),
+      color: context.appEditor,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(
         color: widget.errorText == null
-            ? Colors.white.withValues(alpha: .1)
+            ? context.appBorder
             : Theme.of(context).colorScheme.error,
       ),
     ),
@@ -84,13 +93,27 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
       children: [
         _buildToolbar(),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-            itemCount: _blocks.length,
-            itemBuilder: (context, index) => index == _activeIndex
-                ? _buildActiveBlock()
-                : _buildRenderedBlock(index),
-          ),
+          child: _rawMode
+              ? TextField(
+                  controller: widget.controller,
+                  expands: true,
+                  minLines: null,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  textAlignVertical: TextAlignVertical.top,
+                  onChanged: widget.onChanged,
+                  decoration: const InputDecoration(
+                    hintText: '完整 Markdown 源码',
+                    contentPadding: EdgeInsets.all(16),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+                  itemCount: _blocks.length,
+                  itemBuilder: (context, index) => index == _activeIndex
+                      ? _buildActiveBlock()
+                      : _buildRenderedBlock(index),
+                ),
         ),
       ],
     ),
@@ -98,45 +121,55 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
 
   Widget _buildToolbar() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(colors: [Color(0xFF173E4C), Color(0xFF1D354F)]),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: context.isRedNote
+            ? const [Color(0xFFFFE6E9), Color(0xFFFFF3F4)]
+            : const [Color(0xFF173E4C), Color(0xFF1D354F)],
+      ),
       borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
     ),
-    child: Row(
-      children: [
-        const Icon(Icons.view_agenda_outlined, size: 18),
-        const SizedBox(width: 8),
-        Text(
-          context.l10n.blockEditor,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        const Spacer(),
-        _toolButton(
-          context.l10n.heading,
-          Icons.format_size,
-          () => _toggleCurrentLinePrefix('## '),
-        ),
-        _toolButton(
-          context.l10n.bold,
-          Icons.format_bold,
-          () => _toggleInlineFormat('**'),
-        ),
-        _toolButton(
-          context.l10n.quote,
-          Icons.format_quote,
-          () => _toggleCurrentLinePrefix('> '),
-        ),
-        _toolButton(
-          context.l10n.inlineCode,
-          Icons.code,
-          () => _toggleInlineFormat('`'),
-        ),
-        _toolButton(
-          context.l10n.codeBlock,
-          Icons.data_object,
-          _insertCodeBlock,
-        ),
-      ],
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          const Icon(Icons.view_agenda_outlined, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            context.l10n.blockEditor,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: 8),
+          _toolButton('源码', Icons.article_outlined, _toggleRawMode),
+          _toolButton('链接', Icons.link, _insertLink),
+          _toolButton('图片', Icons.image_outlined, _insertImage),
+          _toolButton(
+            context.l10n.heading,
+            Icons.format_size,
+            () => _toggleCurrentLinePrefix('## '),
+          ),
+          _toolButton(
+            context.l10n.bold,
+            Icons.format_bold,
+            () => _toggleInlineFormat('**'),
+          ),
+          _toolButton(
+            context.l10n.quote,
+            Icons.format_quote,
+            () => _toggleCurrentLinePrefix('> '),
+          ),
+          _toolButton(
+            context.l10n.inlineCode,
+            Icons.code,
+            () => _toggleInlineFormat('`'),
+          ),
+          _toolButton(
+            context.l10n.codeBlock,
+            Icons.data_object,
+            _insertCodeBlock,
+          ),
+        ],
+      ),
     ),
   );
 
@@ -145,9 +178,9 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
     padding: const EdgeInsets.only(bottom: 10),
     child: DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFF123B49),
+        color: context.appActive,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: const Color(0xFF68D9CE), width: 1.4),
+        border: Border.all(color: context.appAccent, width: 1.4),
         boxShadow: const [BoxShadow(color: Color(0x3300D7C4), blurRadius: 16)],
       ),
       child: Focus(
@@ -155,7 +188,7 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
         child: TextField(
           controller: _activeController,
           focusNode: _focusNode,
-          cursorColor: const Color(0xFF8FF5E9),
+          cursorColor: context.appAccent,
           cursorWidth: 2.2,
           cursorHeight: 22,
           keyboardType: TextInputType.multiline,
@@ -200,8 +233,9 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: MarkdownBody(
+                  child: MarkdownContent(
                     data: raw,
+                    store: widget.documentStore,
                     styleSheet: _markdownStyle(context),
                   ),
                 ),
@@ -464,6 +498,96 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
     _focusNode.requestFocus();
   }
 
+  void _toggleRawMode() {
+    if (_rawMode) {
+      _blocks = _parseBlocks(widget.controller.text);
+      if (_blocks.isEmpty) _blocks.add(_MarkdownBlock(''));
+      if (_blocks.last.raw.trim().isNotEmpty) _blocks.add(_MarkdownBlock(''));
+      _activeIndex = _blocks.length - 1;
+      _setActiveText(_blocks[_activeIndex].raw);
+    }
+    setState(() => _rawMode = !_rawMode);
+  }
+
+  Future<void> _insertLink() async {
+    final selected = _activeController.selection;
+    final start = selected.isValid
+        ? selected.start
+        : _activeController.text.length;
+    final end = selected.isValid ? selected.end : start;
+    final label = start < end
+        ? _activeController.text.substring(start, end)
+        : '';
+    final url = TextEditingController();
+    try {
+      final result = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('插入链接'),
+          content: TextField(
+            controller: url,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'https://example.com'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, url.text.trim()),
+              child: const Text('插入'),
+            ),
+          ],
+        ),
+      );
+      if (result == null ||
+          !['https', 'http', 'mailto'].contains(Uri.tryParse(result)?.scheme)) {
+        return;
+      }
+      _replaceActiveRange(
+        start,
+        end,
+        '[${label.isEmpty ? result : label}]($result)',
+        TextSelection.collapsed(
+          offset:
+              start +
+              (label.isEmpty ? result.length : label.length) +
+              result.length +
+              4,
+        ),
+      );
+    } finally {
+      url.dispose();
+    }
+  }
+
+  Future<void> _insertImage() async {
+    final selected = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+      withData: true,
+    );
+    if (selected == null) return;
+    final picked = selected.files.single;
+    final data =
+        picked.bytes ??
+        (picked.path == null ? null : await File(picked.path!).readAsBytes());
+    if (data == null || widget.documentStore == null) return;
+    final uri = await widget.documentStore!.storeAttachment(data, picked.name);
+    if (!mounted) return;
+    final selection = _activeController.selection;
+    final at = selection.isValid
+        ? selection.start
+        : _activeController.text.length;
+    _replaceActiveRange(
+      at,
+      at,
+      '![${picked.name}]($uri)',
+      TextSelection.collapsed(offset: at + picked.name.length + uri.length + 5),
+    );
+  }
+
   void _insertCodeBlock() {
     final selection = _activeController.selection;
     final hasSelection = selection.isValid && !selection.isCollapsed;
@@ -509,18 +633,18 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
 
   MarkdownStyleSheet _markdownStyle(BuildContext context) => MarkdownStyleSheet(
     p: const TextStyle(height: 1.62, fontSize: 15.5),
-    h1: const TextStyle(
-      color: Color(0xFFFFD17E),
+    h1: TextStyle(
+      color: Theme.of(context).colorScheme.primary,
       fontSize: 25,
       fontWeight: FontWeight.w700,
     ),
-    h2: const TextStyle(
-      color: Color(0xFF82E0D5),
+    h2: TextStyle(
+      color: Theme.of(context).colorScheme.primary,
       fontSize: 21,
       fontWeight: FontWeight.w700,
     ),
-    h3: const TextStyle(
-      color: Color(0xFFBCC8FF),
+    h3: TextStyle(
+      color: Theme.of(context).colorScheme.secondary,
       fontSize: 18,
       fontWeight: FontWeight.w700,
     ),

@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:dartloom_sync/dartloom_sync.dart' as dartloom;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,12 +10,13 @@ import '../../l10n/l10n.dart';
 import '../../repositories/bubble_repository.dart';
 import '../../services/bubble_document_store.dart';
 import '../../services/startup_service.dart';
-import '../../services/import_service.dart';
 import '../../services/locale_service.dart';
 import '../../services/sync_service.dart';
 import '../../viewmodels/bubble_view_models.dart';
 import '../../widgets/bubble_detail_dialog.dart';
 import '../../widgets/markdown_block_editor.dart';
+import '../../services/visual_theme_service.dart';
+import 'import_wizard.dart';
 
 class BubbleListPage extends ConsumerStatefulWidget {
   const BubbleListPage({super.key});
@@ -34,7 +34,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
   Widget build(BuildContext context) {
     final bubbles = ref.watch(bubblesProvider(_query));
     return Scaffold(
-      backgroundColor: const Color(0xFF061620),
+      backgroundColor: context.appBackground,
       appBar: AppBar(
         title: Text(context.l10n.appTitle),
         backgroundColor: Colors.transparent,
@@ -48,17 +48,20 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
           IconButton(
             tooltip: context.l10n.importFile,
             icon: const Icon(Icons.file_upload_outlined),
-            onPressed: _importFile,
+            onPressed: _openImportWizard,
           ),
         ],
       ),
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF061620), Color(0xFF0B2834)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+        decoration: BoxDecoration(
+          color: context.isRedNote ? context.appBackground : null,
+          gradient: context.isRedNote
+              ? null
+              : const LinearGradient(
+                  colors: [Color(0xFF061620), Color(0xFF0B2834)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
         ),
         child: Column(
           children: [
@@ -66,9 +69,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
               child: SearchBar(
                 elevation: const WidgetStatePropertyAll(0),
-                backgroundColor: const WidgetStatePropertyAll(
-                  Color(0xFF123442),
-                ),
+                backgroundColor: WidgetStatePropertyAll(context.appField),
                 side: WidgetStatePropertyAll(
                   BorderSide(color: Colors.white.withValues(alpha: .1)),
                 ),
@@ -147,126 +148,19 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
     builder: (_) => const _SettingsDialog(),
   );
 
-  Future<void> _importFile() async {
-    // The full mapping pipeline is intentionally independent of the view;
-    // this compact first-run flow recognizes title/description headers.
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json', 'csv', 'xlsx'],
+  Future<void> _openImportWizard() async {
+    final imported = await showDialog<int>(
+      context: context,
+      builder: (_) => const ImportWizard(),
     );
-    if (result == null || result.files.single.path == null) return;
-    final selectedPath = result.files.single.path!;
-    if (selectedPath.toLowerCase().endsWith('.json')) {
-      try {
-        final imported = await _importCanonical(File(selectedPath));
-        _refresh();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.importedCount(imported))),
-          );
-        }
-      } on Object catch (error) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.readError('$error'))),
-          );
-        }
-      }
-      return;
-    }
-    final rows = await ImportService().readTable(
-      File(result.files.single.path!),
-    );
-    var imported = 0;
-    final existing = (await ref.read(bubbleRepositoryProvider).getAll())
-        .map((b) => b.title.toLowerCase())
-        .toSet();
-    for (final row in rows) {
-      final title = row.values['title'] ?? row.values['标题'] ?? '';
-      final description =
-          row.values['description'] ??
-          row.values['正文'] ??
-          row.values['描述'] ??
-          '';
-      if (title.trim().isEmpty ||
-          description.trim().isEmpty ||
-          !existing.add(title.trim().toLowerCase())) {
-        continue;
-      }
-      await ref
-          .read(bubbleRepositoryProvider)
-          .save(
-            Bubble(
-              id: _newBubbleId(),
-              title: title.trim(),
-              description: description.trim(),
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-          );
-      imported++;
-    }
-    _refresh();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.importedCount(imported))),
-      );
-    }
-  }
-
-  Future<int> _importCanonical(File file) async {
-    final batch = await ImportService().readImport(file);
-    final store = ref.read(bubbleDocumentStoreProvider);
-    final sourceId = batch.sourceId;
-    if (sourceId != null) {
-      final previous = await ImportCheckpointStore.read(
-        store.supportRoot,
-        sourceId,
-      );
-      if (previous != null && batch.cursor != previous) {
-        throw FormatException(
-          'Import cursor does not continue source "$sourceId".',
-        );
+    if (imported != null) {
+      _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导入完成：$imported 条新增或更新的笔记')));
       }
     }
-    final repository = ref.read(bubbleRepositoryProvider);
-    final existing = {
-      for (final bubble in await repository.getAll(includeDeleted: true))
-        bubble.id: bubble,
-    };
-    var imported = 0;
-    for (final item in batch.items) {
-      final now = DateTime.now();
-      final previous = existing[item.id];
-      final updatedAt = item.updatedAt ?? now.toUtc();
-      if (previous != null && !updatedAt.isAfter(previous.updatedAt)) {
-        continue;
-      }
-      final bubble = Bubble(
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        createdAt: previous?.createdAt ?? now,
-        updatedAt: updatedAt,
-        appearanceFrequency: item.appearanceFrequency,
-        shownByDevice: previous?.shownByDevice ?? const {},
-        lastShownAt: previous?.lastShownAt,
-        shownCount: previous?.shownCount ?? 0,
-        deletedAt: null,
-        fieldVersions: previous?.fieldVersions ?? const {},
-      );
-      await repository.save(bubble);
-      existing[item.id] = bubble;
-      imported++;
-    }
-    if (sourceId != null && batch.nextCursor != null) {
-      await ImportCheckpointStore.write(
-        store.supportRoot,
-        sourceId,
-        batch.nextCursor!,
-      );
-    }
-    return imported;
   }
 
   Future<void> _openDetail(Bubble bubble) async {
@@ -274,6 +168,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
       context: context,
       builder: (_) => BubbleDetailDialog(
         bubble: bubble,
+        documentStore: ref.read(bubbleDocumentStoreProvider),
         onFrequencyChanged: (frequency) => ref
             .read(bubbleRepositoryProvider)
             .updateFrequency(bubble.id, frequency),
@@ -443,6 +338,29 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                   ref
                       .read(localeControllerProvider.notifier)
                       .setPreference(value);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<VisualTheme>(
+              initialValue: ref.watch(visualThemeProvider),
+              decoration: const InputDecoration(
+                labelText: '外观主题',
+                prefixIcon: Icon(Icons.palette_outlined),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: VisualTheme.ocean,
+                  child: Text('Ocean · 海洋'),
+                ),
+                DropdownMenuItem(
+                  value: VisualTheme.redNote,
+                  child: Text('小红书 · 灵感卡片'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  ref.read(visualThemeProvider.notifier).setTheme(value);
                 }
               },
             ),
@@ -795,7 +713,10 @@ class _BubbleTile extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
-          colors: [accent.withValues(alpha: .2), const Color(0xFF102A36)],
+          colors: [
+            accent.withValues(alpha: .2),
+            context.isRedNote ? Colors.white : const Color(0xFF102A36),
+          ],
         ),
         border: Border.all(color: accent.withValues(alpha: .28)),
         boxShadow: const [
@@ -883,7 +804,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
         height: min(screen.height - 36, 760),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFF071A25),
+            color: context.appPanel,
             borderRadius: BorderRadius.circular(26),
             border: Border.all(color: Colors.white.withValues(alpha: .12)),
             boxShadow: const [
@@ -903,9 +824,9 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                 children: [
                   Container(
                     padding: const EdgeInsets.fromLTRB(26, 20, 18, 18),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Color(0xFF244DA9), Color(0xFF7648A9)],
+                        colors: context.appHeaderGradient,
                       ),
                     ),
                     child: Row(
@@ -938,7 +859,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                     padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF123846),
+                        color: context.appField,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: const Color(0xFF66D8CD).withValues(alpha: .32),
@@ -969,6 +890,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                       padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
                       child: MarkdownBlockEditor(
                         controller: _description,
+                        documentStore: ref.read(bubbleDocumentStoreProvider),
                         errorText: _descriptionError,
                         onChanged: (_) {
                           if (_descriptionError != null) {
@@ -980,7 +902,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                   ),
                   Container(
                     padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
-                    color: const Color(0xFF0B2733),
+                    color: context.appPanel,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [

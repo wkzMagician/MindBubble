@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'markdown_content.dart';
+import '../services/bubble_document_store.dart';
+import '../services/visual_theme_service.dart';
 
 import '../l10n/app_localizations.dart';
 import '../l10n/l10n.dart';
@@ -9,11 +12,13 @@ class BubbleDetailDialog extends StatefulWidget {
   const BubbleDetailDialog({
     required this.bubble,
     required this.onFrequencyChanged,
+    this.documentStore,
     this.onEdit,
     this.onDelete,
     super.key,
   });
   final Bubble bubble;
+  final BubbleDocumentStore? documentStore;
   final Future<void> Function(int frequency) onFrequencyChanged;
   final VoidCallback? onEdit;
   final Future<void> Function()? onDelete;
@@ -32,7 +37,7 @@ class _BubbleDetailDialogState extends State<BubbleDetailDialog> {
       constraints: const BoxConstraints(maxWidth: 680, maxHeight: 760),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFF071B27),
+          color: context.appPanel,
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: Colors.white.withValues(alpha: .12)),
         ),
@@ -44,10 +49,8 @@ class _BubbleDetailDialogState extends State<BubbleDetailDialog> {
             children: [
               Container(
                 padding: const EdgeInsets.fromLTRB(28, 20, 16, 18),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF3158B8), Color(0xFF8B4EC4)],
-                  ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: context.appHeaderGradient),
                 ),
                 child: Row(
                   children: [
@@ -72,14 +75,15 @@ class _BubbleDetailDialogState extends State<BubbleDetailDialog> {
               Flexible(
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(28, 22, 28, 20),
-                  color: const Color(0xFF103949),
+                  color: context.appField,
                   child: SingleChildScrollView(
-                    child: MarkdownBody(
+                    child: MarkdownContent(
                       data: widget.bubble.description,
+                      store: widget.documentStore,
                       selectable: true,
                       styleSheet: MarkdownStyleSheet(
-                        p: const TextStyle(
-                          color: Color(0xFFE1F4F4),
+                        p: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           height: 1.72,
                         ),
                       ),
@@ -89,7 +93,7 @@ class _BubbleDetailDialogState extends State<BubbleDetailDialog> {
               ),
               Container(
                 padding: const EdgeInsets.fromLTRB(22, 10, 22, 14),
-                color: const Color(0xFF0A2633),
+                color: context.appPanel,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
