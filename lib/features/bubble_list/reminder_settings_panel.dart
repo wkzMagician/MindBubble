@@ -145,11 +145,21 @@ class ReminderSettingsPanel extends ConsumerWidget {
             ],
           ),
         if (desktop) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text('桌面悬浮提醒', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 16),
+          const Text('浮现位置'),
+          const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: settings.overlayCorner,
-            decoration: const InputDecoration(labelText: '浮现位置'),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 13,
+              ),
+            ),
             items: const [
               DropdownMenuItem(value: 'topRight', child: Text('右上角')),
               DropdownMenuItem(value: 'bottomRight', child: Text('右下角')),
@@ -162,10 +172,19 @@ class ReminderSettingsPanel extends ConsumerWidget {
               }
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+          const Text('停留时间'),
+          const SizedBox(height: 8),
           DropdownButtonFormField<int>(
             initialValue: settings.overlaySeconds,
-            decoration: const InputDecoration(labelText: '停留时间'),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 13,
+              ),
+            ),
             items: const [
               DropdownMenuItem(value: 5, child: Text('5 秒')),
               DropdownMenuItem(value: 10, child: Text('10 秒')),
@@ -178,6 +197,7 @@ class ReminderSettingsPanel extends ConsumerWidget {
               }
             },
           ),
+          const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: () => ref.read(reminderRuntimeProvider).previewDesktop(),
             icon: const Icon(Icons.visibility_outlined),

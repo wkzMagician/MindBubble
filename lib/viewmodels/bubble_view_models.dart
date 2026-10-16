@@ -4,6 +4,7 @@ import '../models/bubble.dart';
 import '../repositories/bubble_repository.dart';
 import '../services/bubble_document_store.dart';
 import '../services/bubble_refresh_service.dart';
+import '../services/home_bubble_count.dart';
 
 final bubblesProvider = FutureProvider.family<List<Bubble>, String>((
   ref,
@@ -21,5 +22,6 @@ final displayBubblesProvider = FutureProvider<List<Bubble>>((ref) async {
   ref.watch(bubbleRevisionProvider);
   ref.watch(documentStoreRevisionProvider);
   ref.watch(homeRefreshVersionProvider);
-  return ref.watch(bubbleRefreshServiceProvider).refresh();
+  final count = ref.watch(homeBubbleCountProvider);
+  return ref.watch(bubbleRefreshServiceProvider).refresh(count: count);
 });

@@ -32,6 +32,16 @@ void main() {
       expect(find.text('23:00'), findsOneWidget);
       expect(find.text('08:00'), findsOneWidget);
       expect(find.text('预览当前主题浮现效果'), findsOneWidget);
+      // Section heading and two separate field labels must never overlap.
+      final section = tester.getRect(find.text('桌面悬浮提醒'));
+      final positionLabel = tester.getRect(find.text('浮现位置'));
+      final durationLabel = tester.getRect(find.text('停留时间'));
+      final positionField = tester.getRect(
+        find.byType(DropdownButtonFormField<String>),
+      );
+      expect(section.bottom, lessThan(positionLabel.top));
+      expect(positionLabel.bottom, lessThan(positionField.top));
+      expect(positionField.bottom, lessThan(durationLabel.top));
       expect(tester.takeException(), isNull);
     },
   );

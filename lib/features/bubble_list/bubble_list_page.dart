@@ -17,6 +17,7 @@ import '../../widgets/bubble_detail_dialog.dart';
 import '../../widgets/markdown_block_editor.dart';
 import '../../services/visual_theme_service.dart';
 import 'import_wizard.dart';
+import 'home_bubble_count_setting.dart';
 import 'reminder_settings_panel.dart';
 
 class BubbleListPage extends ConsumerStatefulWidget {
@@ -396,6 +397,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                 },
               ),
               const SizedBox(height: 12),
+              const HomeBubbleCountSetting(),
               const ReminderSettingsPanel(),
               const SizedBox(height: 12),
               if (!ref.read(startupServiceProvider).isSupported)
