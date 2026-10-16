@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../repositories/bubble_repository.dart';
+import 'reminder_artwork.dart';
 import 'reminder_settings.dart';
 
 final reminderPlatformProvider = Provider<ReminderPlatform>(
@@ -82,10 +83,18 @@ class ReminderPlatform {
   }) async {
     if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
     try {
+      // Rasterize with Flutter's original bubble materials and text engine;
+      // native windows only position/animate a transparent bitmap surface.
+      final png = await ReminderArtwork.render(
+        title: title,
+        redNote: redNote,
+        tintIndex: (id.hashCode & 0x7fffffff) % 5,
+      );
       await _channel.invokeMethod<void>('showOverlay', {
         'bubbleId': id,
         'title': title,
         'redNote': redNote,
+        'artwork': png,
         'seconds': settings.overlaySeconds,
         'corner': settings.overlayCorner,
       });

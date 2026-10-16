@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/bubble.dart';
+import 'ocean_bubble_style.dart';
 
 class OceanBubble extends StatefulWidget {
   const OceanBubble({
@@ -29,17 +30,9 @@ class OceanBubble extends StatefulWidget {
 class _OceanBubbleState extends State<OceanBubble> {
   bool _hovered = false;
 
-  static const _palettes = [
-    [Color(0xFFB8FAF0), Color(0xFF42BFD2), Color(0xFF17668E)],
-    [Color(0xFFD6D4FF), Color(0xFF7D88E8), Color(0xFF394C9B)],
-    [Color(0xFFFFD2EC), Color(0xFFD879BA), Color(0xFF754B91)],
-    [Color(0xFFFFE2A7), Color(0xFFDF9C58), Color(0xFF8A5B53)],
-    [Color(0xFFBFE8FF), Color(0xFF529DD0), Color(0xFF225B8A)],
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final palette = _palettes[widget.tintIndex % _palettes.length];
+    final palette = OceanBubbleStyle.palette(widget.tintIndex);
     final liftScale = 1 + widget.lift * .045 + (_hovered ? .055 : 0);
     final squash = widget.deformation.clamp(0.0, .18);
     return MouseRegion(
@@ -65,14 +58,14 @@ class _OceanBubbleState extends State<OceanBubble> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      center: const Alignment(-.38, -.42),
-                      radius: .9,
+                      center: OceanBubbleStyle.highlightCenter,
+                      radius: OceanBubbleStyle.radialRadius,
                       colors: palette,
-                      stops: const [0, .43, 1],
+                      stops: OceanBubbleStyle.gradientStops,
                     ),
                     border: Border.all(
                       color: Colors.white.withValues(
-                        alpha: _hovered ? .8 : .46,
+                        alpha: _hovered ? .8 : OceanBubbleStyle.outlineOpacity,
                       ),
                       width: _hovered ? 2.2 : 1.3,
                     ),
@@ -84,7 +77,9 @@ class _OceanBubbleState extends State<OceanBubble> {
                         offset: Offset(7, 12 + widget.lift * 5),
                       ),
                       BoxShadow(
-                        color: palette[1].withValues(alpha: .34),
+                        color: palette[1].withValues(
+                          alpha: OceanBubbleStyle.glowOpacity,
+                        ),
                         blurRadius: _hovered ? 34 : 22,
                         spreadRadius: _hovered ? 3 : 0,
                       ),
@@ -99,7 +94,9 @@ class _OceanBubbleState extends State<OceanBubble> {
                           width: widget.size * .24,
                           height: widget.size * .11,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: .24),
+                            color: Colors.white.withValues(
+                              alpha: OceanBubbleStyle.highlightOpacity,
+                            ),
                             borderRadius: BorderRadius.circular(100),
                           ),
                         ),

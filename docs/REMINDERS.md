@@ -34,6 +34,15 @@ MindBubble 有两套独立的抽取状态：
 Android 为了降低电量和特殊闹钟权限负担使用 setAndAllowWhileIdle，系统节能策略可能延迟触发。iOS 后台无法保证无限期生成不同标题，预排程最多 48 条，应用重新启动/恢复、笔记或设置变更时更新队列；连续长期离线后需重新打开应用以继续补齐。
 
 系统通知遵循 Android/iOS 原生 UI，具体外观由系统决定；桌面原生浮窗按 MindBubble 当前的 Ocean/小红书主题渲染。
+### 桌面浮现材质复用
+
+桌面浮现图像由 Flutter 离屏绘制为透明 PNG，再经 `mindbubble/reminder` 原生 MethodChannel 交给独立置顶窗口展示：
+
+- **Ocean**：复用首页 `OceanBubbleStyle` 的五组径向渐变、渐变中心和停靠点、白色描边、圆形高光、柔和外发光与标题排版。窗口四角透明，支持 Windows 淡入/轻微缩放/淡出动画。
+- **小红书**：采用与首页文字卡片相同的暖白纸张、浅灰米色封面、细边框、圆角和低对比度辅助文案，而非纯色横条。
+- **点击**：整个图像可点击，按 Bubble ID 打开对应笔记。提醒选择历史与主页显示选择历史继续完全隔离。
+
+Windows 使用 GDI+ 透明分层窗口显示 Flutter 绘制的 PNG；macOS 使用透明 NSPanel 和 NSImage；Linux 使用 GTK PNG 浮窗（透明窗口效果取决于桌面合成器）。Flutter 调试的 Hot Reload / Hot Restart **无法更新已加载的 C++ 原生 Runner**，切换到新材质后需要彻底结束应用并重新启动。
 
 ## 提醒点击
 

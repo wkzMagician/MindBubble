@@ -80,16 +80,17 @@ class AppDelegate: FlutterAppDelegate {
   private func showReminder(_ args: [String: Any]) {
     floatingTimer?.invalidate()
     floatingPanel?.close()
+    guard let bytes = (args["artwork"] as? FlutterStandardTypedData)?.data,
+          let picture = NSImage(data: bytes) else { return }
     currentBubble = args["bubbleId"] as? String
-    let title = args["title"] as? String ?? ""
-    let redNote = args["redNote"] as? Bool ?? false
     let seconds = args["seconds"] as? Int ?? 10
     let corner = args["corner"] as? String ?? "bottomRight"
-    let width: CGFloat = redNote ? 340 : 205
-    let height: CGFloat = redNote ? 100 : 205
-    let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
-    let x = corner.contains("Right") ? screen.maxX - width - 26 : screen.minX + 26
-    let y = corner.contains("bottom") ? screen.minY + 26 : screen.maxY - height - 26
+    let width = picture.size.width
+    let height = picture.size.height
+    let screen = NSScreen.main?.visibleFrame ??
+      NSRect(x: 0, y: 0, width: 1024, height: 768)
+    let x = corner.contains("Right") ? screen.maxX - width - 14 : screen.minX + 14
+    let y = corner.contains("bottom") ? screen.minY + 14 : screen.maxY - height - 14
     let panel = NSPanel(
       contentRect: NSRect(x: x, y: y, width: width, height: height),
       styleMask: [.borderless, .nonactivatingPanel],
@@ -98,29 +99,33 @@ class AppDelegate: FlutterAppDelegate {
     panel.level = .floating
     panel.isOpaque = false
     panel.backgroundColor = .clear
-    panel.hasShadow = true
+    panel.hasShadow = false
     panel.hidesOnDeactivate = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     let button = NSButton(frame: NSRect(x: 0, y: 0, width: width, height: height))
-    button.title = title
+    button.title = ""
+    button.image = picture
+    button.imagePosition = .imageOnly
+    button.imageScaling = .scaleProportionallyUpOrDown
+    button.isBordered = false
     button.target = self
     button.action = #selector(openReminder)
-    button.isBordered = false
-    button.font = NSFont.systemFont(ofSize: redNote ? 15 : 16, weight: .semibold)
-    button.contentTintColor = redNote ? .textColor : .white
-    button.wantsLayer = true
-    button.layer?.backgroundColor = (redNote ?
-      NSColor(calibratedRed: 0.98, green: 0.97, blue: 0.96, alpha: 1) :
-      NSColor(calibratedRed: 0.11, green: 0.46, blue: 0.66, alpha: 1)).cgColor
-    button.layer?.cornerRadius = redNote ? 12 : width / 2
-    button.layer?.masksToBounds = true
-    button.cell?.wraps = true
-    button.cell?.lineBreakMode = .byTruncatingTail
     panel.contentView = button
+    panel.alphaValue = 0
     panel.orderFrontRegardless()
     floatingPanel = panel
-    floatingTimer = Timer.scheduledTimer(withTimeInterval: Double(max(seconds, 1)), repeats: false) { [weak self] _ in
-      self?.floatingPanel?.orderOut(nil)
+    NSAnimationContext.runAnimationGroup { animation in
+      animation.duration = 0.3
+      panel.animator().alphaValue = 1
     }
-  }
-}
+    floatingTimer = Timer.scheduledTimer(
+      withTimeInterval: Double(max(seconds, 1)), repeats: false
+    ) { [weak self, weak panel] _ in
+      guard let self = self, let panel = panel,
+            self.floatingPanel === panel else { return }
+      NSAnimationContext.runAnimationGroup({ animation in
+        animation.duration = 0.32
+        panel.animator().alphaValue = 0
+      }, completionHandler: { panel.orderOut(nil) })
+    }
+  }}
