@@ -198,9 +198,16 @@ final class SyncService {
     if (_config == null) await loadConfig();
     _logger.info('Starting manual sync.');
     final report = await delegate.syncNow();
-    if (report.failure != null) {
-      _logger.error('Sync failed.', report.failure);
-      throw StateError(report.failure!.message);
+    final failure = report.failure;
+    if (failure != null) {
+      // SyncFailure is a data object without a toString() override. Logging
+      // the object itself only prints "Instance of 'SyncFailure'" and hides
+      // the actionable error message and its retry classification.
+      _logger.error(
+        'Sync failed [${failure.kind.name}, retryable=${failure.retryable}]: '
+        '${failure.message}',
+      );
+      throw dartloom.SyncOperationException(failure);
     }
     _logger.info(
       'Sync completed: downloaded=${report.downloaded}, uploaded=${report.uploaded}, conflicts=${report.conflicts}.',
