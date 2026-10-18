@@ -50,7 +50,6 @@ class ReminderSettingsPanel extends ConsumerWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('启用周期性提醒'),
-          subtitle: Text(desktop ? '在后台定期显示主题化浮现泡泡' : '预先安排系统本地通知，点击进入对应笔记'),
           value: settings.enabled,
           onChanged: (enabled) async {
             if (enabled && (Platform.isAndroid || Platform.isIOS)) {
@@ -116,7 +115,6 @@ class ReminderSettingsPanel extends ConsumerWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('免打扰时段'),
-          subtitle: const Text('跳过时段内的自动浮现；不会集中补发'),
           value: settings.quietEnabled,
           onChanged: (v) =>
               controller.update(settings.copyWith(quietEnabled: v)),
@@ -208,20 +206,10 @@ class ReminderSettingsPanel extends ConsumerWidget {
             contentPadding: EdgeInsets.zero,
             value: settings.keepInTray,
             title: const Text('关闭窗口后继续后台运行'),
-            subtitle: const Text('系统托盘提供重新打开与退出功能'),
             onChanged: (v) =>
                 controller.update(settings.copyWith(keepInTray: v)),
           ),
-        ] else
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              '手机通知由系统显示。浮念预排程未来 48 条通知；重新打开应用或更新笔记时补充。具体提醒时间可能受系统省电策略影响。',
-              style: TextStyle(fontSize: 12),
-            ),
-          ),
-        const SizedBox(height: 6),
-        Text('自动浮现与主页手动刷新互相独立。', style: Theme.of(context).textTheme.bodySmall),
+        ],
       ],
     );
   }

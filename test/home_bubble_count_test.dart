@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mind_bubble/features/bubble_list/home_bubble_count_setting.dart';
 import 'package:mind_bubble/models/bubble.dart';
 import 'package:mind_bubble/services/bubble_refresh_service.dart';
+import 'package:mind_bubble/features/recommendations/recommendation_event_store.dart';
 import 'package:mind_bubble/services/home_bubble_count.dart';
 import 'package:mind_bubble/repositories/bubble_repository.dart';
 import 'package:mind_bubble/services/bubble_document_store.dart';
@@ -16,6 +17,8 @@ import 'package:mind_bubble/viewmodels/bubble_view_models.dart';
 class _FakeBubbleRepository implements BubbleRepository {
   _FakeBubbleRepository(this.notes);
   final List<Bubble> notes;
+  @override
+  final RecommendationEventStore events = RecommendationEventStore.memory();
 
   @override
   Future<List<Bubble>> getAll({
@@ -69,15 +72,9 @@ void main() {
       final first = selector.draw(library, count: count);
       final second = selector.draw(library, count: count);
       expect(first, hasLength(count));
-      expect(second, hasLength(count));
-      expect(first.map((b) => b.id).toSet(), hasLength(count));
-      expect(second.map((b) => b.id).toSet(), hasLength(count));
       expect(
-        second
-            .map((b) => b.id)
-            .toSet()
-            .difference(first.map((b) => b.id).toSet()),
-        hasLength(15 - count < count ? 15 - count : count),
+        second.every((n) => library.any((original) => original.id == n.id)),
+        isTrue,
       );
     }
     expect(

@@ -40,6 +40,28 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "cancelReminders" -> { ReminderAlarms.cancel(this); result.success(null) }
+                "deliveredReminders" -> {
+                    val raw = getSharedPreferences("mindbubble_delivered", Context.MODE_PRIVATE)
+                        .getString("events", "[]") ?: "[]"
+                    val json = JSONArray(raw)
+                    result.success((0 until json.length()).map { i ->
+                        val item = json.getJSONObject(i)
+                        mapOf("eventId" to item.getString("eventId"),
+                            "bubbleId" to item.getString("bubbleId"), "at" to item.getLong("at"))
+                    })
+                }
+                "acknowledgeReminders" -> {
+                    val ids = (call.argument<List<String>>("ids") ?: emptyList()).toSet()
+                    val prefs = getSharedPreferences("mindbubble_delivered", Context.MODE_PRIVATE)
+                    val events = JSONArray(prefs.getString("events", "[]") ?: "[]")
+                    val remaining = JSONArray()
+                    for (i in 0 until events.length()) {
+                        val item = events.getJSONObject(i)
+                        if (!ids.contains(item.optString("eventId"))) remaining.put(item)
+                    }
+                    prefs.edit().putString("events", remaining.toString()).commit()
+                    result.success(null)
+                }
                 "consumeLaunchBubble" -> {
                     result.success(bubbleToOpen)
                     bubbleToOpen = null
@@ -72,12 +94,15 @@ object ReminderAlarms {
     private const val IDS = "ids"
     private const val ITEMS = "items"
 
-    private fun pending(context: Context, id: Int, title: String, bubbleId: String): PendingIntent {
+    private fun pending(context: Context, id: Int, title: String, bubbleId: String,
+                        summary: String = "", eventId: String = ""): PendingIntent {
         val trigger = Intent(context, ReminderReceiver::class.java).apply {
             action = "mindbubble.remind." + id
             putExtra("id", id)
             putExtra("title", title)
             putExtra("bubbleId", bubbleId)
+            putExtra("summary", summary)
+            putExtra("eventId", eventId)
         }
         return PendingIntent.getBroadcast(
             context, id, trigger, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -111,7 +136,8 @@ object ReminderAlarms {
             ids.add(id)
             alarm.setAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP, at,
-                pending(context, id, item.optString("title"), item.optString("bubbleId"))
+                pending(context, id, item.optString("title"), item.optString("bubbleId"),
+                    item.optString("summary"), item.optString("eventId"))
             )
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -133,6 +159,7 @@ class ReminderReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= 24 && !manager.areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(NotificationChannel(
                 NOTIFY_CHANNEL, "浮念自动浮现", NotificationManager.IMPORTANCE_DEFAULT))
@@ -145,13 +172,24 @@ class ReminderReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = if (Build.VERSION.SDK_INT >= 26)
             Notification.Builder(context, NOTIFY_CHANNEL) else Notification.Builder(context)
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(NOTIFY_CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return
+        try {
         manager.notify(id, builder
             .setSmallIcon(context.applicationInfo.icon)
             .setContentTitle(title)
-            .setContentText("浮念 · 重新遇见一个想法")
+            .setContentText(intent.getStringExtra("summary") ?: "")
             .setContentIntent(click)
             .setAutoCancel(true)
             .build())
+        } catch (_: SecurityException) { return }
+        val prefs = context.getSharedPreferences("mindbubble_delivered", Context.MODE_PRIVATE)
+        val events = JSONArray(prefs.getString("events", "[]") ?: "[]")
+        val eventId = intent.getStringExtra("eventId").orEmpty()
+            .ifEmpty { "android:$id:${System.currentTimeMillis()}" }
+        events.put(JSONObject().put("eventId", eventId).put("bubbleId", bubbleId)
+            .put("at", System.currentTimeMillis()))
+        prefs.edit().putString("events", events.toString()).commit()
     }
 }
 

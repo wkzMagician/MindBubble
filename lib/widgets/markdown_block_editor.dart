@@ -16,6 +16,7 @@ class MarkdownBlockEditor extends StatefulWidget {
     this.errorText,
     this.documentStore,
     this.onChanged,
+    this.neutralColors = false,
     super.key,
   });
 
@@ -23,6 +24,7 @@ class MarkdownBlockEditor extends StatefulWidget {
   final String? errorText;
   final BubbleDocumentStore? documentStore;
   final ValueChanged<String>? onChanged;
+  final bool neutralColors;
 
   @override
   State<MarkdownBlockEditor> createState() => _MarkdownBlockEditorState();
@@ -36,6 +38,15 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
   late TextEditingController _activeController;
   late int _activeIndex;
   bool _settingActiveText = false;
+  Color get _editorColor =>
+      widget.neutralColors ? const Color(0xFFF8F8F4) : context.appEditor;
+  Color get _borderColor =>
+      widget.neutralColors ? const Color(0xFFDCE3D7) : context.appBorder;
+  Color get _activeColor =>
+      widget.neutralColors ? const Color(0xFFF0F4ED) : context.appActive;
+  Color get _accentColor => widget.neutralColors
+      ? Theme.of(context).colorScheme.primary
+      : context.appAccent;
 
   @override
   void initState() {
@@ -80,11 +91,11 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: context.appEditor,
+      color: _editorColor,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(
         color: widget.errorText == null
-            ? context.appBorder
+            ? _borderColor
             : Theme.of(context).colorScheme.error,
       ),
     ),
@@ -178,9 +189,9 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
     padding: const EdgeInsets.only(bottom: 10),
     child: DecoratedBox(
       decoration: BoxDecoration(
-        color: context.appActive,
+        color: _activeColor,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: context.appAccent, width: 1.4),
+        border: Border.all(color: _accentColor, width: 1.4),
         boxShadow: const [BoxShadow(color: Color(0x3300D7C4), blurRadius: 16)],
       ),
       child: Focus(
@@ -188,7 +199,7 @@ class _MarkdownBlockEditorState extends State<MarkdownBlockEditor> {
         child: TextField(
           controller: _activeController,
           focusNode: _focusNode,
-          cursorColor: context.appAccent,
+          cursorColor: _accentColor,
           cursorWidth: 2.2,
           cursorHeight: 22,
           keyboardType: TextInputType.multiline,

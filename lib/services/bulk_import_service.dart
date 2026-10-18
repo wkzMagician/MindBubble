@@ -149,6 +149,7 @@ class BulkImportService {
   }) async {
     final ledger = await ImportLedger.open(documents.supportRoot);
     var saved = 0;
+    final newNotes = <Bubble>[];
     for (final entry in preview.items) {
       if (entry.action == ImportAction.unchanged) {
         final local = await repository.getById(entry.bubbleId);
@@ -198,12 +199,23 @@ class BulkImportService {
         id: id,
         title: note.title.trim(),
         description: markdown.trim(),
-        createdAt: current?.createdAt ?? note.updatedAt ?? now,
+        createdAt: shouldDuplicate
+            ? note.updatedAt ?? now
+            : current?.createdAt ?? note.updatedAt ?? now,
         updatedAt: now,
         appearanceFrequency: current?.appearanceFrequency ?? 3,
-        shownByDevice: current?.shownByDevice ?? const {},
+        shownByDevice: shouldDuplicate
+            ? const {}
+            : current?.shownByDevice ?? const {},
+        profile: shouldDuplicate ? null : current?.profile,
+        cover: shouldDuplicate ? null : current?.cover,
+        preference: shouldDuplicate ? 0 : current?.preference ?? 0,
+        recommendationEnabled: shouldDuplicate
+            ? true
+            : current?.recommendationEnabled ?? true,
       );
-      await repository.save(bubble);
+      await repository.save(bubble, analyze: false);
+      if (current == null || shouldDuplicate) newNotes.add(bubble);
       saved++;
       if (!shouldDuplicate) {
         ledger.entries[_ledgerKey(preview.sourceId, note.externalId)] = {
@@ -215,6 +227,7 @@ class BulkImportService {
       }
     }
     await ledger.save();
+    await repository.analyzeNotes(newNotes);
     return saved;
   }
 

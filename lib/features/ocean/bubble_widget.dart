@@ -1,7 +1,8 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-
 import '../../models/bubble.dart';
-import 'ocean_bubble_style.dart';
+import '../../services/bubble_document_store.dart';
+import '../note_cover/note_cover_artwork.dart';
 
 class OceanBubble extends StatefulWidget {
   const OceanBubble({
@@ -12,9 +13,10 @@ class OceanBubble extends StatefulWidget {
     required this.impactAngle,
     required this.tintIndex,
     required this.onTap,
+    this.documentStore,
+    this.onHoverChanged,
     super.key,
   });
-
   final Bubble bubble;
   final double size;
   final double lift;
@@ -22,107 +24,93 @@ class OceanBubble extends StatefulWidget {
   final double impactAngle;
   final int tintIndex;
   final VoidCallback onTap;
-
+  final BubbleDocumentStore? documentStore;
+  final ValueChanged<bool>? onHoverChanged;
   @override
   State<OceanBubble> createState() => _OceanBubbleState();
 }
 
 class _OceanBubbleState extends State<OceanBubble> {
   bool _hovered = false;
+  void _hover(bool value) {
+    setState(() => _hovered = value);
+    widget.onHoverChanged?.call(value);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final palette = OceanBubbleStyle.palette(widget.tintIndex);
-    final liftScale = 1 + widget.lift * .045 + (_hovered ? .055 : 0);
-    final squash = widget.deformation.clamp(0.0, .18);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Transform.scale(
-          scale: liftScale,
-          child: Transform.rotate(
-            angle: widget.impactAngle,
-            child: Transform.scale(
-              scaleX: 1 - squash,
-              scaleY: 1 + squash * .62,
-              child: Transform.rotate(
-                angle: -widget.impactAngle,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  width: widget.size,
-                  height: widget.size,
-                  padding: EdgeInsets.all(widget.size * .14),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      center: OceanBubbleStyle.highlightCenter,
-                      radius: OceanBubbleStyle.radialRadius,
-                      colors: palette,
-                      stops: OceanBubbleStyle.gradientStops,
-                    ),
-                    border: Border.all(
-                      color: Colors.white.withValues(
-                        alpha: _hovered ? .8 : OceanBubbleStyle.outlineOpacity,
+    final squash = widget.deformation.clamp(0.0, .08);
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: Semantics(
+        container: true,
+        label: widget.bubble.title,
+        button: true,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => _hover(true),
+          onExit: (_) => _hover(false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: Transform.rotate(
+              angle: widget.impactAngle,
+              child: Transform.scale(
+                scaleX: 1 - squash,
+                scaleY: 1 + squash * .62,
+                child: Transform.rotate(
+                  angle: -widget.impactAngle,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    width: widget.size,
+                    height: widget.size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0x70D8F7EE),
+                          Color(0x126399AD),
+                          Color(0x46E2B6EE),
+                        ],
                       ),
-                      width: _hovered ? 2.2 : 1.3,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: .42),
-                        blurRadius: 20 + widget.lift * 8,
-                        spreadRadius: -3,
-                        offset: Offset(7, 12 + widget.lift * 5),
+                      border: Border.all(
+                        color: Color(_hovered ? 0xE6E6FFF7 : 0xA8C5ECEE),
+                        width: _hovered ? 1.7 : 1.1,
                       ),
-                      BoxShadow(
-                        color: palette[1].withValues(
-                          alpha: OceanBubbleStyle.glowOpacity,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0x7000111D),
+                          blurRadius: 20 + widget.lift * 2,
+                          offset: const Offset(0, 12),
                         ),
-                        blurRadius: _hovered ? 34 : 22,
-                        spreadRadius: _hovered ? 3 : 0,
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: widget.size * .08,
-                        top: widget.size * .05,
-                        child: Container(
-                          width: widget.size * .24,
-                          height: widget.size * .11,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(
-                              alpha: OceanBubbleStyle.highlightOpacity,
+                        if (_hovered)
+                          const BoxShadow(
+                            color: Color(0x2677CEC6),
+                            blurRadius: 26,
+                          ),
+                      ],
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.all(widget.size * .042),
+                          child: ClipOval(
+                            child: ExcludeSemantics(
+                              child: NoteCoverArtwork(
+                                note: widget.bubble,
+                                documentStore: widget.documentStore,
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(100),
                           ),
                         ),
-                      ),
-                      Center(
-                        child: Text(
-                          widget.bubble.title,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontSize: widget.size * .105,
-                                fontWeight: FontWeight.w700,
-                                height: 1.18,
-                                color: Colors.white,
-                                shadows: const [
-                                  Shadow(
-                                    color: Color(0x66000000),
-                                    blurRadius: 6,
-                                  ),
-                                ],
-                              ),
+                        const IgnorePointer(
+                          child: CustomPaint(painter: _BubbleRimPainter()),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -132,4 +120,32 @@ class _OceanBubbleState extends State<OceanBubble> {
       ),
     );
   }
+}
+
+class _BubbleRimPainter extends CustomPainter {
+  const _BubbleRimPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final edge = Offset.zero & size;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    paint
+      ..color = const Color(0xC5F3FFFC)
+      ..strokeWidth = math.max(1.2, size.width * .006);
+    canvas.drawArc(
+      edge.deflate(size.width * .045),
+      math.pi * 1.12,
+      math.pi * .43,
+      false,
+      paint,
+    );
+    paint
+      ..color = const Color(0x78F1C5EE)
+      ..strokeWidth = .8;
+    canvas.drawArc(edge.deflate(3), .08, math.pi * .62, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(_BubbleRimPainter oldDelegate) => false;
 }

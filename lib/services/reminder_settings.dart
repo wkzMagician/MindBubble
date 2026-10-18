@@ -2,6 +2,9 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bubble.dart';
+import '../features/recommendations/note_profile.dart';
+import '../features/recommendations/recommendation_config.dart';
+import '../features/recommendations/recommendation_engine.dart';
 
 class ReminderIntervals {
   static const values = <int>[
@@ -150,35 +153,20 @@ class ReminderSettingsController extends StateNotifier<ReminderSettings> {
   }
 }
 
-/// The reminder selector is never shared with the home selector.
+/// Compatibility facade over the shared adaptive recommendation engine.
 class ReminderSelector {
-  ReminderSelector({Random? random}) : _random = random ?? Random();
-  final Random _random;
-  final List<String> _history = [];
+  ReminderSelector({Random? random})
+    : engine = RecommendationEngine(random: random);
+  final RecommendationEngine engine;
   Bubble? pick(List<Bubble> bubbles) {
-    final active = bubbles
-        .where((b) => !b.isDeleted && b.title.trim().isNotEmpty)
-        .toList();
-    if (active.isEmpty) return null;
-    final recent = _history
-        .take(active.length > 3 ? 3 : active.length - 1)
-        .toSet();
-    final eligible = active.where((b) => !recent.contains(b.id)).toList();
-    final pool = eligible.isEmpty ? active : eligible;
-    var roll = _random.nextInt(
-      pool.fold<int>(0, (s, b) => s + b.appearanceFrequency),
-    );
-    var choice = pool.last;
-    for (final b in pool) {
-      roll -= b.appearanceFrequency;
-      if (roll < 0) {
-        choice = b;
-        break;
-      }
-    }
-    _history.insert(0, choice.id);
-    if (_history.length > 20) _history.removeLast();
-    return choice;
+    return engine
+        .recommend(
+          bubbles,
+          count: 1,
+          now: DateTime.now(),
+          config: RecommendationConfig(),
+        )
+        .firstOrNull;
   }
 }
 
@@ -187,10 +175,14 @@ class ReminderOccurrence {
     required this.at,
     required this.bubbleId,
     required this.title,
+    this.summary = '',
+    this.eventId = '',
   });
   final DateTime at;
   final String bubbleId;
   final String title;
+  final String summary;
+  final String eventId;
 }
 
 List<ReminderOccurrence> planReminders({
@@ -199,9 +191,14 @@ List<ReminderOccurrence> planReminders({
   required List<Bubble> bubbles,
   required ReminderSelector selector,
   int count = 48,
+  RecommendationConfig? config,
+  List<RecommendationEvent> events = const [],
 }) {
   if (!settings.enabled || count <= 0 || bubbles.isEmpty) return const [];
   final planned = <ReminderOccurrence>[];
+  final parameters = config ?? RecommendationConfig();
+  final virtualNotes = {for (final n in bubbles) n.id: n};
+  final virtualEvents = [...events];
   var time = now;
   for (
     var attempted = 0;
@@ -210,11 +207,45 @@ List<ReminderOccurrence> planReminders({
   ) {
     time = time.add(Duration(minutes: settings.intervalMinutes));
     if (settings.isQuiet(time)) continue;
-    final bubble = selector.pick(bubbles);
-    if (bubble == null) break;
-    planned.add(
-      ReminderOccurrence(at: time, bubbleId: bubble.id, title: bubble.title),
+    final selected = selector.engine.recommend(
+      virtualNotes.values.toList(),
+      count: min(parameters.notificationCount, count - planned.length),
+      now: time,
+      config: parameters,
+      events: virtualEvents,
     );
+    if (selected.isEmpty) break;
+    for (final bubble in selected) {
+      final eventId =
+          'notification:${time.millisecondsSinceEpoch}:${planned.length}:${bubble.id}';
+      planned.add(
+        ReminderOccurrence(
+          at: time,
+          bubbleId: bubble.id,
+          title: bubble.cueTitle,
+          summary: bubble.showSummary ? bubble.effectiveProfile.summary : '',
+          eventId: eventId,
+        ),
+      );
+      // Simulate earlier slots for planning, without persisting future exposure.
+      virtualNotes[bubble.id] = bubble.copyWith(
+        shownByDevice: {
+          'planned': BubbleShowStats(
+            count: bubble.shownCount + 1,
+            lastShownAt: time,
+          ),
+        },
+      );
+      virtualEvents.add(
+        RecommendationEvent(
+          id: eventId,
+          noteId: bubble.id,
+          timestamp: time,
+          type: RecommendationEventType.shown,
+          channel: RecommendationChannel.notification,
+        ),
+      );
+    }
   }
   return planned;
 }

@@ -14,16 +14,20 @@ final class AppServices {
     required this.dailyCache,
     required this.sync,
     required this.settings,
+    SettingsStore? modelSettings,
+    required this.secrets,
     required this.logger,
     required this.startup,
     required this.dispose,
-  });
+  }) : modelSettings = modelSettings ?? settings;
 
   final DeviceIdentity identity;
   final BubbleDocumentStore documents;
   final DailySelectionCache dailyCache;
   final SyncService sync;
   final SettingsStore settings;
+  final SettingsStore modelSettings;
+  final SettingsStore secrets;
   final AppLogger logger;
   final StartupService startup;
   final Future<void> Function() dispose;

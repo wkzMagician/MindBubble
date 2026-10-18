@@ -12,3 +12,5 @@ packages:
   - dartloom_sync
   - dartloom_storage
   - dartloom_storage_file
+  - dartloom_model
+  - dartloom_model_io

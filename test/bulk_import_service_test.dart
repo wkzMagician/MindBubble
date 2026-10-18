@@ -94,6 +94,33 @@ void main() {
     expect((await repo.getById(bubble.id))!.description, '# Third');
   });
 
+  test('duplicated imports start with fresh recommendation state', () async {
+    await imports.commit(
+      await imports.preview('duplicate-state', const [
+        ImportCandidate(externalId: 'a', title: 'Idea', markdown: 'initial'),
+      ]),
+    );
+    var original = (await repo.getAll()).single;
+    await repo.recordShown([original.id], DateTime.now());
+    original = (await repo.getById(original.id))!;
+    await repo.save(
+      original.copyWith(description: 'local edit', preference: .3),
+    );
+    final preview = await imports.preview('duplicate-state', const [
+      ImportCandidate(externalId: 'a', title: 'Idea', markdown: 'remote edit'),
+    ]);
+    expect(preview.count(ImportAction.conflict), 1);
+    await imports.commit(
+      preview,
+      conflictChoice: ImportConflictChoice.duplicate,
+    );
+    final copy = (await repo.getAll()).singleWhere((n) => n.id != original.id);
+    expect(copy.shownCount, 0);
+    expect(copy.lastShownAt, isNull);
+    expect(copy.preference, 0);
+    expect(copy.recommendationEnabled, true);
+  });
+
   test('directory markdown and relative images import together', () async {
     final dir = Directory('${temp.path}/vault')..createSync();
     File(

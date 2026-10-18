@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../features/recommendations/recommendation_config.dart';
 
-/// Number of notes shown by a home refresh; independent of reminder sampling.
+/// Number of notes in a home batch, stored with the shared recommendation config.
 class HomeBubbleCount {
   static const minimum = 5;
   static const maximum = 10;
@@ -12,21 +13,35 @@ class HomeBubbleCount {
 }
 
 final homeBubbleCountProvider =
-    StateNotifierProvider<HomeBubbleCountController, int>(
-      (_) => HomeBubbleCountController()..load(),
-    );
+    StateNotifierProvider<HomeBubbleCountController, int>((ref) {
+      final controller = HomeBubbleCountController(
+        initialCount: ref.read(recommendationConfigProvider).bubbleCount,
+        onChanged: (count) async {
+          final config = await RecommendationConfig.load();
+          await ref
+              .read(recommendationConfigProvider.notifier)
+              .update(config.copyWith(bubbleCount: count));
+        },
+      );
+      ref.listen(
+        recommendationConfigProvider,
+        (_, config) => controller.adopt(config.bubbleCount),
+      );
+      return controller..load();
+    });
 
 class HomeBubbleCountController extends StateNotifier<int> {
-  HomeBubbleCountController() : super(HomeBubbleCount.defaultValue);
+  HomeBubbleCountController({
+    int initialCount = HomeBubbleCount.defaultValue,
+    Future<void> Function(int)? onChanged,
+  }) : _onChanged = onChanged,
+       super(initialCount);
+  final Future<void> Function(int)? _onChanged;
   int _revision = 0;
 
   Future<void> load() async {
     final revision = _revision;
-    final preferences = await SharedPreferences.getInstance();
-    final saved = HomeBubbleCount.normalize(
-      preferences.getInt(HomeBubbleCount.storageKey) ??
-          HomeBubbleCount.defaultValue,
-    );
+    final saved = (await RecommendationConfig.load()).bubbleCount;
     if (mounted && revision == _revision) state = saved;
   }
 
@@ -41,7 +56,21 @@ class HomeBubbleCountController extends StateNotifier<int> {
     }
     _revision++;
     state = count;
+    if (_onChanged != null) {
+      await _onChanged(count);
+    } else {
+      await (await RecommendationConfig.load())
+          .copyWith(bubbleCount: count)
+          .save();
+    }
     final preferences = await SharedPreferences.getInstance();
     await preferences.setInt(HomeBubbleCount.storageKey, count);
+  }
+
+  void adopt(int count) {
+    if (mounted && state != count) {
+      _revision++;
+      state = count;
+    }
   }
 }

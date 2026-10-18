@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/bubble.dart';
+import '../features/recommendations/note_profile.dart';
+import '../features/note_cover/note_cover.dart';
 import 'device_identity_service.dart';
 
 final bubbleDocumentStoreProvider = Provider<BubbleDocumentStore>(
@@ -51,6 +53,9 @@ class BubbleDocumentCodec {
       'createdAt': bubble.createdAt.millisecondsSinceEpoch,
       'updatedAt': bubble.updatedAt.millisecondsSinceEpoch,
       'appearanceFrequency': bubble.appearanceFrequency,
+      'noteProfile': bubble.profile?.toJson(),
+      if (bubble.cover != null) 'cover': bubble.cover!.toJson(),
+      'recommendationState': bubble.recommendationState.toJson(),
       'updatedBy': updatedBy,
       'shownByDevice': {
         for (final entry in bubble.shownByDevice.entries)
@@ -104,12 +109,43 @@ class BubbleDocumentCodec {
     final bubble = Bubble(
       id: id,
       title: title,
+      cover: metadata['cover'] is Map
+          ? NoteCover.fromJson(
+              (metadata['cover'] as Map).cast<String, Object?>(),
+            )
+          : null,
       description: normalized.substring(bodyStart),
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAt.toInt()),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAt.toInt()),
       appearanceFrequency:
           (metadata['appearanceFrequency'] as num?)?.toInt().clamp(1, 5) ?? 3,
       shownByDevice: Map.unmodifiable(shownByDevice),
+      lastShownAt:
+          (metadata['recommendationState'] as Map?)?['last_shown'] is num
+          ? DateTime.fromMillisecondsSinceEpoch(
+              ((metadata['recommendationState'] as Map)['last_shown'] as num)
+                  .toInt(),
+            )
+          : null,
+      shownCount:
+          ((metadata['recommendationState'] as Map?)?['exposure_count'] as num?)
+              ?.toInt() ??
+          0,
+      profile: metadata['noteProfile'] is Map
+          ? NoteProfile.fromJson(
+              (metadata['noteProfile'] as Map).cast<String, Object?>(),
+            )
+          : null,
+      preference: boundedNumber(
+        (metadata['recommendationState'] as Map?)?['preference'],
+        0,
+        -.6,
+        .6,
+      ),
+      recommendationEnabled: ![
+        false,
+        0,
+      ].contains((metadata['recommendationState'] as Map?)?['enabled']),
     );
     return StoredBubbleDocument(
       bubble: bubble,

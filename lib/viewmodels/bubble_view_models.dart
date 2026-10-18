@@ -20,7 +20,8 @@ final homeRefreshVersionProvider = StateProvider<int>((_) => 0);
 
 final displayBubblesProvider = FutureProvider<List<Bubble>>((ref) async {
   ref.watch(bubbleRevisionProvider);
-  ref.watch(documentStoreRevisionProvider);
+  // Exposure metadata is also written to documents. Watching those writes here
+  // would recursively draw and expose another batch after every display.
   ref.watch(homeRefreshVersionProvider);
   final count = ref.watch(homeBubbleCountProvider);
   return ref.watch(bubbleRefreshServiceProvider).refresh(count: count);

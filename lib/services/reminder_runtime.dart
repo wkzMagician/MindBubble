@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../repositories/bubble_repository.dart';
+import '../features/recommendations/note_profile.dart';
+import '../features/recommendations/recommendation_service.dart';
 import 'reminder_artwork.dart';
 import 'reminder_settings.dart';
 
@@ -61,6 +63,8 @@ class ReminderPlatform {
             'at': events[index].at.millisecondsSinceEpoch,
             'title': events[index].title,
             'bubbleId': events[index].bubbleId,
+            'summary': events[index].summary,
+            'eventId': events[index].eventId,
           },
       ],
     });
@@ -75,13 +79,15 @@ class ReminderPlatform {
     }
   }
 
-  Future<void> showDesktop({
+  Future<bool> showDesktop({
     required String title,
     required String id,
     required bool redNote,
     required ReminderSettings settings,
   }) async {
-    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      return false;
+    }
     try {
       // Rasterize with Flutter's original bubble materials and text engine;
       // native windows only position/animate a transparent bitmap surface.
@@ -90,7 +96,7 @@ class ReminderPlatform {
         redNote: redNote,
         tintIndex: (id.hashCode & 0x7fffffff) % 5,
       );
-      await _channel.invokeMethod<void>('showOverlay', {
+      final result = await _channel.invokeMethod<Object?>('showOverlay', {
         'bubbleId': id,
         'title': title,
         'redNote': redNote,
@@ -98,32 +104,65 @@ class ReminderPlatform {
         'seconds': settings.overlaySeconds,
         'corner': settings.overlayCorner,
       });
+      return result != false;
     } on MissingPluginException {
       // Linux desktops without an overlay backend can use native notifications
       // once an adapter has been enabled.
+      return false;
     }
+  }
+
+  Future<List<Map<String, Object?>>> delivered() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return [];
+    try {
+      final values =
+          await _channel.invokeListMethod<Object?>('deliveredReminders') ?? [];
+      return values
+          .whereType<Map>()
+          .map((v) => v.cast<String, Object?>())
+          .toList();
+    } on MissingPluginException {
+      return [];
+    }
+  }
+
+  Future<void> acknowledge(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await _channel.invokeMethod<void>('acknowledgeReminders', {'ids': ids});
   }
 }
 
 /// Impure coordinator; never watches or writes the homepage's draw version.
 class ReminderRuntime {
-  ReminderRuntime({required this.repository, required this.platform});
+  ReminderRuntime({
+    required this.repository,
+    required this.platform,
+    RecommendationService? recommendations,
+  }) : recommendations = recommendations ?? RecommendationService(repository);
   final BubbleRepository repository;
   final ReminderPlatform platform;
+  final RecommendationService recommendations;
   final ReminderSelector selector = ReminderSelector();
   Timer? _timer;
   int _generation = 0;
   ReminderSettings _settings = const ReminderSettings();
   bool _redNote = false;
   bool _disposed = false;
+  bool _showing = false;
 
   Future<void> configure(
     ReminderSettings settings, {
     required bool redNote,
   }) async {
+    final sameCadence =
+        _settings.enabled == settings.enabled &&
+        _settings.intervalMinutes == settings.intervalMinutes;
     _settings = settings;
     _redNote = redNote;
-    _timer?.cancel();
+    if (!sameCadence || !settings.enabled) {
+      _timer?.cancel();
+      _timer = null;
+    }
     final version = ++_generation;
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       await platform.setKeepInTray(settings.enabled && settings.keepInTray);
@@ -133,7 +172,8 @@ class ReminderRuntime {
       return;
     }
     if (Platform.isAndroid || Platform.isIOS) {
-      // 48 unique titles, comfortably below iOS 64 pending notification slots.
+      await reconcileDeliveries();
+      // 48 pending notifications, below iOS's 64-request limit.
       final notes = await repository.getAll();
       if (_disposed || version != _generation) return;
       final plan = planReminders(
@@ -141,10 +181,13 @@ class ReminderRuntime {
         settings: settings,
         bubbles: notes,
         selector: selector,
+        config: recommendations.config,
+        events: await repository.events.read(),
       );
+      if (_disposed || version != _generation) return;
       await platform.schedule(plan);
     } else {
-      _timer = Timer.periodic(
+      _timer ??= Timer.periodic(
         Duration(minutes: settings.intervalMinutes),
         (_) => _desktopTick(),
       );
@@ -155,28 +198,71 @@ class ReminderRuntime {
     if (_disposed || !_settings.enabled || _settings.isQuiet(DateTime.now())) {
       return;
     }
-    final notes = await repository.getAll();
-    final picked = selector.pick(notes);
-    if (picked == null || _disposed) return;
-    await platform.showDesktop(
-      title: picked.title,
-      id: picked.id,
-      redNote: _redNote,
-      settings: _settings,
-    );
+    await _showBatch(recommendations.config.notificationCount);
   }
 
   Future<void> previewDesktop() async {
     if (_disposed) return;
-    final notes = await repository.getAll();
-    final picked = selector.pick(notes);
-    if (picked == null) return;
-    await platform.showDesktop(
-      title: picked.title,
-      id: picked.id,
-      redNote: _redNote,
-      settings: _settings,
-    );
+    await _showBatch(1, preview: true);
+  }
+
+  Future<void> _showBatch(int count, {bool preview = false}) async {
+    if (_showing) return;
+    _showing = true;
+    try {
+      final notes = await recommendations.recommend(
+        count,
+        channel: RecommendationChannel.notification,
+      );
+      for (var i = 0; i < notes.length; i++) {
+        if (_disposed ||
+            (!preview &&
+                (!_settings.enabled || _settings.isQuiet(DateTime.now())))) {
+          break;
+        }
+        final picked = await repository.getById(notes[i].id);
+        if (picked == null || !picked.recommendationEnabled) continue;
+        final sent = await platform.showDesktop(
+          title: picked.showSummary
+              ? '${picked.cueTitle}\n${picked.effectiveProfile.summary}'
+              : picked.cueTitle,
+          id: picked.id,
+          redNote: _redNote,
+          settings: _settings,
+        );
+        if (sent) {
+          await repository.recordShown(
+            [picked.id],
+            DateTime.now(),
+            channel: RecommendationChannel.notification,
+          );
+        }
+        if (i < notes.length - 1) {
+          await Future<void>.delayed(
+            Duration(seconds: _settings.overlaySeconds),
+          );
+        }
+      }
+    } finally {
+      _showing = false;
+    }
+  }
+
+  Future<void> reconcileDeliveries() async {
+    final delivered = await platform.delivered();
+    final acknowledged = <String>[];
+    for (final event in delivered) {
+      final id = event['eventId'], note = event['bubbleId'], at = event['at'];
+      if (id is! String || note is! String || at is! num) continue;
+      await repository.recordShown(
+        [note],
+        DateTime.fromMillisecondsSinceEpoch(at.toInt()),
+        channel: RecommendationChannel.notification,
+        eventId: id,
+      );
+      acknowledged.add(id);
+    }
+    await platform.acknowledge(acknowledged);
   }
 
   Future<void> refreshMobileSchedule() async {
@@ -196,6 +282,7 @@ final reminderRuntimeProvider = Provider<ReminderRuntime>((ref) {
   final runtime = ReminderRuntime(
     repository: ref.read(bubbleRepositoryProvider),
     platform: ref.read(reminderPlatformProvider),
+    recommendations: ref.read(recommendationServiceProvider),
   );
   ref.onDispose(runtime.dispose);
   return runtime;

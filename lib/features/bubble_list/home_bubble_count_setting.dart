@@ -18,7 +18,6 @@ class HomeBubbleCountSetting extends ConsumerWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('每次刷新数量'),
-          subtitle: const Text('5–10 条；仅影响主页，自动浮现仍独立抽取'),
           trailing: DropdownButton<int>(
             key: const Key('homeBubbleCountDropdown'),
             value: count,

@@ -10,6 +10,7 @@ final class BubbleNotificationDelegate: NSObject, UNUserNotificationCenterDelega
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
+    ReminderDeliveryLedger.record(response.notification)
     if let id = response.notification.request.content.userInfo["bubbleId"] as? String {
       opened?(id)
     }
@@ -20,10 +21,29 @@ final class BubbleNotificationDelegate: NSObject, UNUserNotificationCenterDelega
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
+    ReminderDeliveryLedger.record(notification)
     if #available(iOS 14.0, *) {
       completionHandler([.banner, .sound])
     } else {
       completionHandler([.alert, .sound])
+    }
+  }
+}
+
+enum ReminderDeliveryLedger {
+  static let key = "mindbubble.delivered"
+  static let acknowledgedKey = "mindbubble.delivered.acknowledged"
+  static func record(_ notification: UNNotification) {
+    let info = notification.request.content.userInfo
+    guard let eventId = info["eventId"] as? String,
+          let bubbleId = info["bubbleId"] as? String else { return }
+    let acknowledged = UserDefaults.standard.stringArray(forKey: acknowledgedKey) ?? []
+    if acknowledged.contains(eventId) { return }
+    var events = UserDefaults.standard.array(forKey: key) as? [[String: Any]] ?? []
+    if !events.contains(where: { ($0["eventId"] as? String) == eventId }) {
+      events.append(["eventId": eventId, "bubbleId": bubbleId,
+                     "at": notification.date.timeIntervalSince1970 * 1000])
+      UserDefaults.standard.set(events, forKey: key)
     }
   }
 }
@@ -75,6 +95,22 @@ final class BubbleNotificationDelegate: NSObject, UNUserNotificationCenterDelega
       case "consumeLaunchBubble":
         result(self.bubbleToOpen)
         self.bubbleToOpen = nil
+      case "deliveredReminders":
+        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+          DispatchQueue.main.async {
+            notifications.forEach { ReminderDeliveryLedger.record($0) }
+            result(UserDefaults.standard.array(forKey: ReminderDeliveryLedger.key) ?? [])
+          }
+        }
+      case "acknowledgeReminders":
+        let args = call.arguments as? [String: Any]
+        let ids = args?["ids"] as? [String] ?? []
+        let events = UserDefaults.standard.array(forKey: ReminderDeliveryLedger.key) as? [[String: Any]] ?? []
+        UserDefaults.standard.set(events.filter { !ids.contains($0["eventId"] as? String ?? "") },
+                                  forKey: ReminderDeliveryLedger.key)
+        let previous = UserDefaults.standard.stringArray(forKey: ReminderDeliveryLedger.acknowledgedKey) ?? []
+        UserDefaults.standard.set(Array(Set(previous + ids)), forKey: ReminderDeliveryLedger.acknowledgedKey)
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -110,9 +146,9 @@ final class BubbleNotificationDelegate: NSObject, UNUserNotificationCenterDelega
     }
     let content = UNMutableNotificationContent()
     content.title = title
-    content.body = "浮念 · 重新遇见一个想法"
+    content.body = item["summary"] as? String ?? ""
     content.sound = .default
-    content.userInfo = ["bubbleId": bubbleId]
+    content.userInfo = ["bubbleId": bubbleId, "eventId": item["eventId"] as? String ?? ""]
     let components = Calendar.current.dateComponents(
       [.year, .month, .day, .hour, .minute, .second], from: when
     )

@@ -19,37 +19,42 @@ void main() {
   testWidgets('RedNote feed shows neutral covers and opens selected note', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1440, 960);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    Bubble? selected;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData.light(useMaterial3: true),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('zh'),
-        home: Scaffold(
-          body: RedNoteGrid(
-            bubbles: List.generate(5, note),
-            onBubbleTap: (bubble) => selected = bubble,
+    final semantics = tester.ensureSemantics();
+    try {
+      tester.view.physicalSize = const Size(1440, 960);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Bubble? selected;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.light(useMaterial3: true),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+          home: Scaffold(
+            body: RedNoteGrid(
+              bubbles: List.generate(5, note),
+              onBubbleTap: (bubble) => selected = bubble,
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('灵感流'), findsOneWidget);
-    expect(find.text('5 条笔记'), findsOneWidget);
-    expect(find.text('笔记 0'), findsOneWidget);
-    final whiteCards = tester
-        .widgetList<Material>(find.byType(Material))
-        .where((material) => material.color == RedNoteColors.surface);
-    expect(whiteCards.length, greaterThanOrEqualTo(5));
-    expect(tester.takeException(), isNull);
+      expect(find.text('灵感流'), findsOneWidget);
+      expect(find.text('5 条笔记'), findsOneWidget);
+      expect(find.bySemanticsLabel('笔记 0'), findsOneWidget);
+      final whiteCards = tester
+          .widgetList<Material>(find.byType(Material))
+          .where((material) => material.color == RedNoteColors.surface);
+      expect(whiteCards.length, greaterThanOrEqualTo(5));
+      expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('笔记 0'));
-    expect(selected?.id, 'note-0');
+      await tester.tap(find.bySemanticsLabel('笔记 0'));
+      expect(selected?.id, 'note-0');
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('RedNote feed adapts to a narrow viewport without overflow', (

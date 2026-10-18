@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,8 +7,10 @@ import '../../models/bubble.dart';
 import '../../l10n/l10n.dart';
 import '../../repositories/bubble_repository.dart';
 import '../../services/bubble_document_store.dart';
+import '../../services/home_exposure_service.dart';
 import '../../viewmodels/bubble_view_models.dart';
-import '../../widgets/bubble_detail_dialog.dart';
+import '../recommendations/note_detail.dart';
+import '../recommendations/note_profile.dart';
 import '../bubble_list/bubble_list_page.dart';
 import 'bubble_field.dart';
 import 'ocean_background.dart';
@@ -24,6 +27,69 @@ class OceanPage extends ConsumerStatefulWidget {
 class _OceanPageState extends ConsumerState<OceanPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animation;
+  List<Bubble>? _displayedBatch;
+  final Set<String> _exposedIds = {};
+
+  Widget _presentBubbles(List<Bubble> bubbles, bool redNote) {
+    if (!identical(_displayedBatch, bubbles)) {
+      _displayedBatch = bubbles;
+      _exposedIds.clear();
+    }
+    void recordVisible(List<Bubble> visible) {
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      final fresh = visible
+          .where((note) => !_exposedIds.contains(note.id))
+          .toList();
+      if (fresh.isEmpty) return;
+      _exposedIds.addAll(fresh.map((note) => note.id));
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted ||
+            !(ModalRoute.of(context)?.isCurrent ?? true) ||
+            !identical(ref.read(displayBubblesProvider).valueOrNull, bubbles)) {
+          if (identical(_displayedBatch, bubbles)) {
+            _exposedIds.removeAll(fresh.map((note) => note.id));
+          }
+          return;
+        }
+        await ref.read(homeExposureRecorderProvider)(fresh);
+        if (mounted && ref.exists(bubbleRepositoryProvider)) {
+          final repository = ref.read(bubbleRepositoryProvider);
+          for (final note in fresh) {
+            unawaited(
+              repository.ensureCover(note).catchError((Object error) {
+                debugPrint('Could not cache note cover: $error');
+              }),
+            );
+          }
+        }
+      });
+    }
+
+    if (bubbles.isEmpty) return Center(child: Text(context.l10n.noBubblesYet));
+    if (redNote) {
+      recordVisible(bubbles);
+      return RedNoteGrid(
+        bubbles: bubbles,
+        onBubbleTap: _showBubble,
+        documentStore: ref.read(bubbleDocumentStoreProvider),
+      );
+    }
+    final needsAttachments = bubbles.any(
+      (note) =>
+          note.cover?.posterUri != null ||
+          note.cover?.imageUri?.startsWith('assets/') == true ||
+          note.description.contains('](assets/'),
+    );
+    return BubbleField(
+      key: ValueKey(ref.watch(homeRefreshVersionProvider)),
+      bubbles: bubbles,
+      onBubbleTap: _showBubble,
+      documentStore: needsAttachments || ref.exists(bubbleDocumentStoreProvider)
+          ? ref.read(bubbleDocumentStoreProvider)
+          : null,
+      onVisibleChanged: recordVisible,
+    );
+  }
 
   @override
   void initState() {
@@ -73,8 +139,6 @@ class _OceanPageState extends ConsumerState<OceanPage>
                               context.l10n.appTitle,
                               style: const TextStyle(fontSize: 25),
                             ),
-                            const SizedBox(height: 4),
-                            Text(context.l10n.todaySubtitle),
                           ],
                         ),
                       ),
@@ -94,12 +158,15 @@ class _OceanPageState extends ConsumerState<OceanPage>
                       ),
                       IconButton(
                         tooltip: context.l10n.manageBubbles,
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const BubbleListPage(),
-                          ),
-                        ),
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const BubbleListPage(),
+                            ),
+                          );
+                          if (mounted) _refreshBubbles();
+                        },
                         icon: const Icon(Icons.format_list_bulleted),
                       ),
                     ],
@@ -114,23 +181,7 @@ class _OceanPageState extends ConsumerState<OceanPage>
                         error: (error, _) => Center(
                           child: Text(context.l10n.scheduleError('$error')),
                         ),
-                        data: (bubbles) => bubbles.isEmpty
-                            ? Center(child: Text(context.l10n.noBubblesYet))
-                            : redNote
-                            ? RedNoteGrid(
-                                bubbles: bubbles,
-                                onBubbleTap: _showBubble,
-                                documentStore: ref.read(
-                                  bubbleDocumentStoreProvider,
-                                ),
-                              )
-                            : BubbleField(
-                                key: ValueKey(
-                                  ref.watch(homeRefreshVersionProvider),
-                                ),
-                                bubbles: bubbles,
-                                onBubbleTap: _showBubble,
-                              ),
+                        data: (bubbles) => _presentBubbles(bubbles, redNote),
                       ),
                 ),
               ],
@@ -145,17 +196,13 @@ class _OceanPageState extends ConsumerState<OceanPage>
     );
   }
 
-  Future<void> _showBubble(Bubble bubble) => showDialog<void>(
+  Future<void> _showBubble(Bubble bubble) => showNoteDetail(
     context: context,
-    builder: (context) => BubbleDetailDialog(
-      bubble: bubble,
-      documentStore: ref.read(bubbleDocumentStoreProvider),
-      onFrequencyChanged: (frequency) => ref
-          .read(bubbleRepositoryProvider)
-          .updateFrequency(bubble.id, frequency),
-      onEdit: () => _editBubble(bubble),
-      onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
-    ),
+    ref: ref,
+    channel: RecommendationChannel.home,
+    bubble: bubble,
+    onEdit: () => _editBubble(bubble),
+    onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
   );
 
   Future<void> _editBubble(Bubble bubble) async {

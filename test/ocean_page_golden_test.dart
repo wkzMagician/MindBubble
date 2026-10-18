@@ -5,79 +5,92 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mind_bubble/features/ocean/ocean_page.dart';
 import 'package:mind_bubble/l10n/app_localizations.dart';
 import 'package:mind_bubble/models/bubble.dart';
+import 'package:mind_bubble/services/home_exposure_service.dart';
 import 'package:mind_bubble/viewmodels/bubble_view_models.dart';
 
 void main() {
   testWidgets('ocean page renders its bubble content', (tester) async {
-    tester.view.physicalSize = const Size(900, 650);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    final semantics = tester.ensureSemantics();
+    try {
+      tester.view.physicalSize = const Size(900, 650);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          displayBubblesProvider.overrideWith((ref) async {
-            ref.watch(homeRefreshVersionProvider);
-            return [_bubble()];
-          }),
-        ],
-        child: MaterialApp(
-          theme: ThemeData.dark(useMaterial3: true),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('en'),
-          home: const OceanPage(),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            homeExposureRecorderProvider.overrideWithValue((_) async {}),
+            displayBubblesProvider.overrideWith((ref) async {
+              ref.watch(homeRefreshVersionProvider);
+              return [_bubble()];
+            }),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(useMaterial3: true),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const OceanPage(),
+          ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.byType(OceanPage), findsOneWidget);
-    expect(find.text('A calm idea'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+      expect(find.byType(OceanPage), findsOneWidget);
+      expect(find.bySemanticsLabel('A calm idea'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
   });
   testWidgets('desktop refresh button redraws bubbles without a date', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(900, 650);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    final semantics = tester.ensureSemantics();
+    try {
+      tester.view.physicalSize = const Size(900, 650);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          displayBubblesProvider.overrideWith((ref) async {
-            final generation = ref.watch(homeRefreshVersionProvider);
-            return [_bubble().copyWith(title: 'Idea $generation')];
-          }),
-        ],
-        child: MaterialApp(
-          theme: ThemeData.dark(useMaterial3: true),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('en'),
-          home: const OceanPage(),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            homeExposureRecorderProvider.overrideWithValue((_) async {}),
+            displayBubblesProvider.overrideWith((ref) async {
+              final generation = ref.watch(homeRefreshVersionProvider);
+              return [_bubble().copyWith(title: 'Idea $generation')];
+            }),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(useMaterial3: true),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const OceanPage(),
+          ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Idea 0'), findsOneWidget);
-    expect(find.text('Refresh'), findsOneWidget);
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.bySemanticsLabel('Idea 0'), findsOneWidget);
+      expect(find.text('Refresh'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.refresh_rounded));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Idea 1'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.refresh_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.bySemanticsLabel('Idea 1'), findsOneWidget);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.f5);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Idea 2'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f5);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.bySemanticsLabel('Idea 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
   });
 }
 

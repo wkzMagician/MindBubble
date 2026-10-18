@@ -26,7 +26,7 @@ class _TopDownOceanPainter extends CustomPainter {
         ..shader = const RadialGradient(
           center: Alignment(-.3, -.45),
           radius: 1.25,
-          colors: [Color(0xFF17637A), Color(0xFF082F43), Color(0xFF031522)],
+          colors: [Color(0xFF164854), Color(0xFF082A39), Color(0xFF041822)],
           stops: [0, .52, 1],
         ).createShader(bounds),
     );
@@ -49,7 +49,7 @@ class _TopDownOceanPainter extends CustomPainter {
     final glow = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2
-      ..color = const Color(0xFF8AE8E1).withValues(alpha: .11)
+      ..color = const Color(0xFF8AE8E1).withValues(alpha: .055)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
     final time = progress * math.pi * 2;
     for (var row = -1; row < 9; row++) {

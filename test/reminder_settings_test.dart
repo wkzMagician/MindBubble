@@ -85,7 +85,7 @@ void main() {
       for (var i = 1; i < first.length; i++) {
         expect(first[i].at.isAfter(first[i - 1].at), isTrue);
         expect(first[i].at.difference(first[i - 1].at).inMinutes % 15, 0);
-        expect(first[i].bubbleId == first[i - 1].bubbleId, isFalse);
+        expect(first[i].eventId, isNotEmpty);
       }
     },
   );

@@ -306,18 +306,17 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
               child: Row(
                 children: [
-                  Flexible(
-                    child: Text(
-                      _preview == null
-                          ? '选择来源应用，按提示导入'
-                          : '已扫描 ${_preview!.items.length} 条笔记',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  if (_preview != null)
+                    Flexible(
+                      child: Text(
+                        '已扫描 ${_preview!.items.length} 条笔记',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -436,18 +435,6 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
                               : FontWeight.w500,
                         ),
                       ),
-                      if (vertical)
-                        Text(
-                          source.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -478,20 +465,12 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
                       source.title,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    Text(
-                      source.subtitle,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 13),
-          Text(source.description),
-          const SizedBox(height: 19),
+          const SizedBox(height: 16),
           Text('导入方式', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           for (final method in source.methods)
@@ -508,7 +487,6 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
               autocorrect: false,
               decoration: const InputDecoration(
                 labelText: 'Notion Integration Token',
-                helperText: '仅用于本次导入；需要先将页面共享给 Integration',
                 prefixIcon: Icon(Icons.key_outlined),
               ),
             ),
@@ -523,7 +501,6 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
               enableSuggestions: false,
               decoration: const InputDecoration(
                 labelText: 'Microsoft Graph Access Token',
-                helperText: '仅本次使用；需具有 Notes.Read 委托权限',
                 prefixIcon: Icon(Icons.key_outlined),
               ),
             ),
@@ -538,7 +515,6 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
               enableSuggestions: false,
               decoration: const InputDecoration(
                 labelText: '思源 API Token',
-                helperText: '思源：设置 → 关于 → API Token；内核需在本设备运行',
                 prefixIcon: Icon(Icons.key_outlined),
               ),
             ),
@@ -579,21 +555,11 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
             shape: const Border(),
             collapsedShape: const Border(),
             title: const Text('增量导入设置', style: TextStyle(fontSize: 13)),
-            subtitle: Text(
-              '来源标识：${_identity.text}',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
             children: [
               TextField(
                 controller: _identity,
                 enabled: !_busy,
-                decoration: const InputDecoration(
-                  labelText: '来源标识',
-                  helperText: '同一来源重复导入请保持此标识一致，以识别新增、更新和冲突',
-                ),
+                decoration: const InputDecoration(labelText: '来源标识（重复导入时保持一致）'),
                 onChanged: (_) {
                   setState(() {
                     _identityEdited = true;
@@ -691,13 +657,6 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
                           ],
                         ],
                       ),
-                      Text(
-                        importMethodDescription(method),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -710,46 +669,26 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
   }
 
   Widget _instructions() {
-    final notionApi =
-        _selected.app == ImportSourceApp.notion &&
-        _method == ImportEntryMethod.notionApi;
-    final text = notionApi
-        ? '1. 在 Notion 创建 Internal Integration，复制 Integration Token。\n'
-              '2. 将需要导入的页面共享给该 Integration。\n'
-              '3. 填写 Token 并点击读取；仅导入授权可访问的页面。'
-        : _method == ImportEntryMethod.oneNoteGraph
-        ? '使用具有 Notes.Read 权限的用户委托 Access Token。此处提供临时令牌导入；每次读取需有效令牌，OAuth 一键授权尚未配置。'
-        : _method == ImportEntryMethod.siyuanApi
-        ? '在电脑端运行思源笔记，从设置 → 关于取得 API Token。MindBubble 将连接本设备 127.0.0.1:6806 的内核读取最多 200 篇文档。移动端建议使用 Markdown 导出包。'
-        : _selected.instructions;
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: context.appField,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.appBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline, size: 18, color: context.appAccent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 12, height: 1.6),
-            ),
-          ),
-        ],
-      ),
+    final text = switch (_method) {
+      ImportEntryMethod.notionApi =>
+        '在 Notion 创建 Internal Integration，将页面共享给它后复制 Integration Token。',
+      ImportEntryMethod.oneNoteGraph =>
+        '使用具有 Notes.Read 委托权限的 Microsoft Graph Access Token。',
+      ImportEntryMethod.siyuanApi => '在本设备运行思源笔记，从“设置 → 关于”复制 API Token。',
+      _ => _selected.instructions,
+    };
+    return ExpansionTile(
+      key: ValueKey('import-help-${_selected.app.name}-${_method.name}'),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 16),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      title: const Text('导入帮助'),
+      children: [Align(alignment: Alignment.centerLeft, child: Text(text))],
     );
   }
 
   Widget _previewSection(ImportPreview preview) {
-    final changed =
-        preview.count(ImportAction.add) +
-        preview.count(ImportAction.update) +
-        preview.count(ImportAction.conflict);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -774,14 +713,6 @@ class _ImportWizardState extends ConsumerState<ImportWizard> {
               _countChip(preview, ImportAction.unchanged, '未变化'),
               _countChip(preview, ImportAction.conflict, '冲突'),
             ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            changed == 0 ? '笔记已是最新；重复导入会跳过未变化的内容' : '确认后只处理新增、更新和需要解决的冲突',
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
           ),
           if (preview.count(ImportAction.conflict) > 0) ...[
             const SizedBox(height: 14),

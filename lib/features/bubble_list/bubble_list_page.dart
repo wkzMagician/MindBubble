@@ -13,12 +13,18 @@ import '../../services/startup_service.dart';
 import '../../services/locale_service.dart';
 import '../../services/sync_service.dart';
 import '../../viewmodels/bubble_view_models.dart';
-import '../../widgets/bubble_detail_dialog.dart';
 import '../../widgets/markdown_block_editor.dart';
+import '../note_cover/note_cover.dart';
+import '../note_cover/note_cover_editor.dart';
 import '../../services/visual_theme_service.dart';
 import 'import_wizard.dart';
 import 'home_bubble_count_setting.dart';
 import 'reminder_settings_panel.dart';
+import '../model_settings/model_settings_panel.dart';
+import '../recommendations/recommendation_settings_panel.dart';
+import '../recommendations/note_detail.dart';
+import '../recommendations/note_profile.dart';
+import '../recommendations/analyze_pending_notes_button.dart';
 
 class BubbleListPage extends ConsumerStatefulWidget {
   const BubbleListPage({super.key});
@@ -52,6 +58,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
             icon: const Icon(Icons.file_upload_outlined),
             onPressed: _openImportWizard,
           ),
+          const AnalyzePendingNotesButton(),
         ],
       ),
       body: DecoratedBox(
@@ -191,19 +198,17 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
   }
 
   Future<void> _openDetail(Bubble bubble) async {
-    final changed = await showDialog<bool>(
+    await showNoteDetail(
       context: context,
-      builder: (_) => BubbleDetailDialog(
-        bubble: bubble,
-        documentStore: ref.read(bubbleDocumentStoreProvider),
-        onFrequencyChanged: (frequency) => ref
-            .read(bubbleRepositoryProvider)
-            .updateFrequency(bubble.id, frequency),
-        onEdit: () => _openEditor(context, bubble: bubble),
-        onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
-      ),
+      ref: ref,
+      channel: _query.trim().isEmpty
+          ? RecommendationChannel.library
+          : RecommendationChannel.search,
+      bubble: bubble,
+      onEdit: () => _openEditor(context, bubble: bubble),
+      onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
     );
-    if (changed == true) _refresh();
+    _refresh();
   }
 }
 
@@ -223,8 +228,6 @@ class _EmptyState extends StatelessWidget {
             context.l10n.emptyTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(height: 8),
-          Text(context.l10n.emptyBody),
         ],
       ),
     ),
@@ -257,6 +260,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     final snapshot = ref.watch(syncSnapshotProvider).value;
     final conflicts = ref.watch(syncConflictsProvider).value ?? const [];
     final sync = ref.read(syncServiceProvider);
+    final lastSyncedAt = snapshot?.lastSuccessAt ?? sync.lastSyncedAt;
     final documentIssues = ref.read(bubbleDocumentStoreProvider).issues;
     return AlertDialog(
       title: Text(context.l10n.settings),
@@ -271,19 +275,19 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.cloud_sync_outlined),
                 title: Text(context.l10n.cloudSync),
-                subtitle: Text(
-                  _syncError ??
-                      ((snapshot?.lastSuccessAt ?? sync.lastSyncedAt) == null
-                          ? context.l10n.cloudSyncSubtitle
-                          : context.l10n.lastSynced(
-                              (snapshot?.lastSuccessAt ?? sync.lastSyncedAt)!
-                                  .toLocal()
-                                  .toString(),
-                            )),
-                  style: _syncError == null
-                      ? null
-                      : TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
+                subtitle: _syncError == null && lastSyncedAt == null
+                    ? null
+                    : Text(
+                        _syncError ??
+                            context.l10n.lastSynced(
+                              lastSyncedAt!.toLocal().toString(),
+                            ),
+                        style: _syncError == null
+                            ? null
+                            : TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                      ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -335,7 +339,6 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                     color: Theme.of(context).colorScheme.error,
                   ),
                   title: Text(context.l10n.syncConflicts(conflicts.length)),
-                  subtitle: Text(context.l10n.syncConflictsSubtitle),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => showDialog<void>(
                     context: context,
@@ -398,6 +401,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
               ),
               const SizedBox(height: 12),
               const HomeBubbleCountSetting(),
+              const ModelSettingsPanel(),
+              const RecommendationSettingsPanel(),
               const ReminderSettingsPanel(),
               const SizedBox(height: 12),
               if (!ref.read(startupServiceProvider).isSupported)
@@ -408,11 +413,6 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(context.l10n.launchAtStartup),
-                  subtitle: Text(
-                    context.l10n.startupPlatformDescription(
-                      ref.read(startupServiceProvider).platformLabel,
-                    ),
-                  ),
                   value: _enabled!,
                   onChanged: _saving ? null : _setStartupEnabled,
                 ),
@@ -634,8 +634,6 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(context.l10n.syncInstructions),
-                  const SizedBox(height: 16),
                   TextField(
                     controller: _server,
                     decoration: InputDecoration(
@@ -662,9 +660,6 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
                     },
                     decoration: InputDecoration(
                       labelText: context.l10n.appPassword,
-                      helperText: _hasStoredPassword
-                          ? context.l10n.storedPasswordHint
-                          : null,
                     ),
                   ),
                   if (_error != null) ...[
@@ -884,6 +879,8 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _title;
   late final TextEditingController _description;
+  late final String _noteId;
+  late NoteCover _cover;
   bool _saving = false;
   String? _descriptionError;
 
@@ -893,6 +890,8 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
     final bubble = widget.bubble;
     _title = TextEditingController(text: bubble?.title);
     _description = TextEditingController(text: bubble?.description);
+    _noteId = bubble?.id ?? _newBubbleId();
+    _cover = bubble?.cover ?? NoteCover.forNote(_noteId, _description.text);
   }
 
   @override
@@ -903,7 +902,22 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
+    final inherited = Theme.of(context);
+    return Theme(
+      data: ThemeData.light(useMaterial3: true).copyWith(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF204E47)),
+        textTheme: inherited.textTheme.apply(
+          bodyColor: const Color(0xFF253D3A),
+          displayColor: const Color(0xFF253D3A),
+        ),
+      ),
+      child: Builder(builder: _buildEditor),
+    );
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -913,19 +927,19 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
         height: min(screen.height - 36, 760),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: context.appPanel,
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withValues(alpha: .12)),
+            color: const Color(0xFFF7F6F1),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFDCE3D7)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x99000000),
-                blurRadius: 46,
+                color: Color(0x33000000),
+                blurRadius: 32,
                 offset: Offset(0, 18),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(18),
             child: Form(
               key: _formKey,
               child: Column(
@@ -933,14 +947,10 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                 children: [
                   Container(
                     padding: const EdgeInsets.fromLTRB(26, 20, 18, 18),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: context.appHeaderGradient,
-                      ),
-                    ),
+                    decoration: const BoxDecoration(color: Color(0xFFF7F6F1)),
                     child: Row(
                       children: [
-                        const Icon(Icons.edit_note, color: Colors.white),
+                        const Icon(Icons.edit_note, color: Color(0xFF253D3A)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -949,7 +959,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                                 : context.l10n.editBubble,
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
-                                  color: Colors.white,
+                                  color: const Color(0xFF253D3A),
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
@@ -959,7 +969,10 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                           onPressed: _saving
                               ? null
                               : () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.white),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Color(0xFF253D3A),
+                          ),
                         ),
                       ],
                     ),
@@ -976,6 +989,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                       ),
                       child: TextFormField(
                         controller: _title,
+                        enabled: !_saving,
                         autofocus: true,
                         decoration: InputDecoration(
                           labelText: context.l10n.titleLabel,
@@ -997,14 +1011,35 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
-                      child: MarkdownBlockEditor(
-                        controller: _description,
-                        documentStore: ref.read(bubbleDocumentStoreProvider),
-                        errorText: _descriptionError,
-                        onChanged: (_) {
-                          if (_descriptionError != null) {
-                            setState(() => _descriptionError = null);
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth >= 740) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: _bodyEditor()),
+                                const SizedBox(width: 20),
+                                SizedBox(
+                                  width: 286,
+                                  child: SingleChildScrollView(
+                                    child: _coverEditor(),
+                                  ),
+                                ),
+                              ],
+                            );
                           }
+                          return SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  height: max(240, constraints.maxHeight * .65),
+                                  child: _bodyEditor(),
+                                ),
+                                const SizedBox(height: 24),
+                                _coverEditor(),
+                              ],
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -1046,6 +1081,35 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? context.l10n.requiredField : null;
 
+  Widget _bodyEditor() => ExcludeFocus(
+    excluding: _saving,
+    child: AbsorbPointer(
+      absorbing: _saving,
+      child: MarkdownBlockEditor(
+        neutralColors: true,
+        controller: _description,
+        documentStore: ref.read(bubbleDocumentStoreProvider),
+        errorText: _descriptionError,
+        onChanged: (_) {
+          if (_descriptionError != null) {
+            setState(() => _descriptionError = null);
+          }
+        },
+      ),
+    ),
+  );
+
+  Widget _coverEditor() => NoteCoverEditor(
+    key: ValueKey(_noteId),
+    noteId: _noteId,
+    title: _title,
+    body: _description,
+    initialCover: _cover,
+    autoSelectFirstImage: widget.bubble?.cover == null,
+    enabled: !_saving,
+    onChanged: (value) => _cover = value,
+  );
+
   Future<void> _save() async {
     final titleIsValid = _formKey.currentState!.validate();
     final descriptionIsValid = _description.text.trim().isNotEmpty;
@@ -1053,10 +1117,11 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
       setState(() => _descriptionError = context.l10n.descriptionRequired);
     }
     if (!titleIsValid || !descriptionIsValid) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _saving = true);
     final existing = widget.bubble;
     final bubble = Bubble(
-      id: existing?.id ?? _newBubbleId(),
+      id: _noteId,
       title: _title.text.trim(),
       description: _description.text.trim(),
       createdAt: existing?.createdAt ?? DateTime.now(),
@@ -1065,9 +1130,22 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
       updatedAt: DateTime.now(),
       appearanceFrequency: existing?.appearanceFrequency ?? 3,
       shownByDevice: existing?.shownByDevice ?? const {},
+      profile: existing?.profile,
+      preference: existing?.preference ?? 0,
+      recommendationEnabled: existing?.recommendationEnabled ?? true,
+      cover: _cover,
     );
-    await ref.read(bubbleRepositoryProvider).save(bubble);
-    if (mounted) Navigator.pop(context, true);
+    try {
+      await ref.read(bubbleRepositoryProvider).save(bubble);
+      if (mounted) Navigator.pop(context, true);
+    } on Object {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.noteSaveFailed)));
+      }
+    }
   }
 }
 
