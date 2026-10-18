@@ -2,7 +2,10 @@
 # Pub replaces the entire override map, so retain the other pinned packages.
 dependency_overrides:
   dartloom_model:
-    path: ../dartloom/packages/dartloom_model
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      path: packages/dartloom_model
   dartloom_autostart:
     git:
       url: https://github.com/wkzMagician/dartloom.git
@@ -29,7 +32,10 @@ dependency_overrides:
       ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_settings_shared_preferences
   dartloom_sync_etag:
-    path: ../dartloom/packages/dartloom_sync_etag
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
+      path: packages/dartloom_sync_etag
   dartloom_sync_flutter:
     git:
       url: https://github.com/wkzMagician/dartloom.git
@@ -41,7 +47,10 @@ dependency_overrides:
       ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_sync_storage
   dartloom_sync_webdav:
-    path: ../dartloom/packages/dartloom_sync_webdav
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
+      path: packages/dartloom_sync_webdav
   dartloom_sync_workmanager:
     git:
       url: https://github.com/wkzMagician/dartloom.git
@@ -77,4 +86,3 @@ dependency_overrides:
       url: https://github.com/wkzMagician/dartloom.git
       ref: 20a3a537374349dd1c620ec4cd7a3517abebfc6c
       path: packages/dartloom_storage
-

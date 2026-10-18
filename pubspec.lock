@@ -169,16 +169,20 @@ packages:
   dartloom_model:
     dependency: "direct main"
     description:
-      path: "../dartloom/packages/dartloom_model"
-      relative: true
-    source: path
+      path: "packages/dartloom_model"
+      ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      resolved-ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
     version: "0.1.0"
   dartloom_model_io:
     dependency: "direct main"
     description:
-      path: "../dartloom/packages/dartloom_model_io"
-      relative: true
-    source: path
+      path: "packages/dartloom_model_io"
+      ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      resolved-ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
     version: "0.1.0"
   dartloom_resident:
     dependency: "direct overridden"
@@ -264,9 +268,11 @@ packages:
   dartloom_sync_etag:
     dependency: "direct main"
     description:
-      path: "../dartloom/packages/dartloom_sync_etag"
-      relative: true
-    source: path
+      path: "packages/dartloom_sync_etag"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
     version: "0.3.0"
   dartloom_sync_flutter:
     dependency: "direct main"
@@ -289,9 +295,11 @@ packages:
   dartloom_sync_webdav:
     dependency: "direct main"
     description:
-      path: "../dartloom/packages/dartloom_sync_webdav"
-      relative: true
-    source: path
+      path: "packages/dartloom_sync_webdav"
+      ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      resolved-ref: "20a3a537374349dd1c620ec4cd7a3517abebfc6c"
+      url: "https://github.com/wkzMagician/dartloom.git"
+    source: git
     version: "0.2.0"
   dartloom_sync_workmanager:
     dependency: "direct main"
