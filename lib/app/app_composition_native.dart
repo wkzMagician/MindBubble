@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart';
 import '../services/bubble_document_store.dart';
 import '../services/daily_selection_cache.dart';
 import '../services/device_identity_service.dart';
+import '../services/model_preferences_store.dart';
 import '../services/startup_service.dart';
 import '../services/sync_service.dart';
 import 'app_paths.dart';
@@ -68,7 +69,8 @@ Future<AppServices> createApplicationServices({bool background = false}) async {
       'webdav': WebDavBackendFactory(
         defaultRootPath: 'MindBubble/v2/bubbles',
         createMissingCollections: true,
-        hierarchical: false,
+        // Attachments are stored under assets/ alongside the documents.
+        hierarchical: true,
         probeDepthInfinity: false,
         connectTimeout: const Duration(seconds: 10),
         requestTimeout: const Duration(seconds: 30),
@@ -103,11 +105,13 @@ Future<AppServices> createApplicationServices({bool background = false}) async {
   );
 
   return AppServices(
+    secrets: secrets,
     identity: identity,
     documents: documents,
     dailyCache: dailyCache,
     sync: facade,
     settings: settings,
+    modelSettings: ModelPreferencesStore(metadata, settings),
     logger: logger,
     startup: startup,
     dispose: () async {

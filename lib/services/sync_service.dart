@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartloom_logging/dartloom_logging.dart';
 import 'package:dartloom_settings/dartloom_settings.dart';
 import 'package:dartloom_sync/dartloom_sync.dart' as dartloom;
@@ -9,7 +11,16 @@ final syncServiceProvider = Provider<SyncService>(
 );
 
 final syncSnapshotProvider = StreamProvider<dartloom.SyncSnapshot>((ref) {
-  return ref.watch(syncServiceProvider).states;
+  final service = ref.watch(syncServiceProvider);
+  return Stream.multi((controller) {
+    final subscription = service.states.listen(
+      controller.add,
+      onError: controller.addError,
+      onDone: controller.close,
+    );
+    controller.add(service.snapshot);
+    controller.onCancel = subscription.cancel;
+  });
 });
 
 final syncConflictsProvider = FutureProvider<List<dartloom.SyncConflict>>((
@@ -198,9 +209,16 @@ final class SyncService {
     if (_config == null) await loadConfig();
     _logger.info('Starting manual sync.');
     final report = await delegate.syncNow();
-    if (report.failure != null) {
-      _logger.error('Sync failed.', report.failure);
-      throw StateError(report.failure!.message);
+    final failure = report.failure;
+    if (failure != null) {
+      // SyncFailure is a data object without a toString() override. Logging
+      // the object itself only prints "Instance of 'SyncFailure'" and hides
+      // the actionable error message and its retry classification.
+      _logger.error(
+        'Sync failed [${failure.kind.name}, retryable=${failure.retryable}]: '
+        '${failure.message}',
+      );
+      throw dartloom.SyncOperationException(failure);
     }
     _logger.info(
       'Sync completed: downloaded=${report.downloaded}, uploaded=${report.uploaded}, conflicts=${report.conflicts}.',

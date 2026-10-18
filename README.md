@@ -25,11 +25,12 @@
 
 浮念把零散的知识、灵感和待回看的概念，放进一个会“再次遇见”它们的空间。你可以随手记录，也可以让应用按照自己的节奏，把内容重新带回眼前。
 
-- **在 Ocean 中浏览**：每天打开应用，概念会以漂浮泡泡的形式出现；点击泡泡即可阅读内容。
+- **双主题浏览**：Ocean 的深海漂浮泡泡 + 小红书暖白笔记卡片，支持首页快速切换与设置持久化。
 - **控制浮现频率**：为每个概念设置五档出现频率，从很少到频繁，决定它被重新展示的节奏。
-- **用 Markdown 记录**：标题和正文都支持 Markdown，适合保存短笔记、知识卡片、阅读摘录和长期思考。
+- **自动浮现提醒**：15 分钟到 24 小时的可调周期、免打扰时段；桌面在后台浮出 Ocean 泡泡或小红书便签，手机由系统发出 Bubble 标题通知。与主页手动刷新独立。详见 [提醒说明](docs/REMINDERS.md)。
+- **Markdown 编辑器**：支持外链、网络图片、本地图片附件、完整 Markdown 源码模式。
 - **集中管理泡泡**：搜索、创建、编辑、删除和批量导入概念，管理自己的知识池。
-- **按标准格式导入**：支持版本化的 `mind-bubble-import` JSON 批次；CSV/XLSX 仍作为旧格式兼容导入。
+- **分来源增量导入**：Obsidian、Notion、Evernote、Google Keep、OneNote、思源、语雀、FlowUs、飞书、flomo 共 10 个专属入口及通用导入，支持文件、部分 API、图片及冲突预览。详见 [导入指南](docs/IMPORT_GUIDE.md)。
 - **多设备保持一致**：通过兼容 WebDAV 的服务同步，可使用坚果云、Nextcloud 等服务。
 - **和 Agent 一起工作**：内置 MCP 服务，Codex、Claude Code、OpenCode 等 Agent 可以读取、搜索和维护同一套本地泡泡。
 
@@ -39,7 +40,7 @@
 
 | Ocean 主界面 | 泡泡管理 |
 | --- | --- |
-| **截图占位**：展示漂浮泡泡、今日概念和阅读入口 | **截图占位**：展示搜索、列表、新建和导入 |
+| **截图占位**：展示漂浮泡泡、随机笔记和刷新入口 | **截图占位**：展示搜索、列表、新建和导入 |
 
 | Markdown 编辑 | 同步设置 |
 | --- | --- |
@@ -95,6 +96,8 @@ flutter test
 - 查看、更新和删除单个泡泡。
 
 详细配置请参考 [MCP 示例配置](tools/mind-bubble.mcp.json)、[导入格式](docs/MIND_BUBBLE_IMPORT_FORMAT.md)、[MCP 服务脚本](tools/mind_bubble_mcp.py) 和仓库内的 [mind-bubble-import skill](skills/mind-bubble-import/SKILL.md)。MCP 还提供 `get_import_checkpoint`，用于按来源游标增量导入。
+
+更多操作见 [增量导入指南](docs/IMPORT_GUIDE.md)。
 
 ## 构建发布包
 

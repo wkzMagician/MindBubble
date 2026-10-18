@@ -98,4 +98,21 @@ Package: `dartloom_storage_file`
   import 'package:dartloom_storage_file/dartloom_storage_file.dart';
   ```
 
+### Model Contracts
+
+Package: `dartloom_model`
+
+- Platforms: Android, Ios, Windows, Macos, Linux, Web
+- Purpose: Provider-independent generation and embedding contracts.
+- Main API: GenerationModel, EmbeddingModel
+- Import: `package:dartloom_model/dartloom_model.dart`
+
+### Native Model Adapters
+
+Package: `dartloom_model_io`
+
+- Platforms: Android, Ios, Windows, Macos, Linux
+- Purpose: API, desktop subscription CLI, and local Ollama adapters.
+- Import: `package:dartloom_model_io/dartloom_model_io.dart`
+
 <!-- dartloom:end -->

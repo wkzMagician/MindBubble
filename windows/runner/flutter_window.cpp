@@ -1,4 +1,5 @@
 #include "flutter_window.h"
+#include "reminder_bridge.h"
 
 #include <optional>
 
@@ -26,6 +27,7 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  InstallReminderBridge(flutter_controller_->engine()->messenger(), GetHandle());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -40,6 +42,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  ShutdownReminderBridge();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -60,6 +63,8 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       return *result;
     }
   }
+
+  if (ReminderHandleMessage(hwnd, message, wparam, lparam)) return 0;
 
   switch (message) {
     case WM_FONTCHANGE:

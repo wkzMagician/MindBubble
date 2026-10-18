@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/bubble.dart';
+import '../features/recommendations/note_profile.dart';
+import '../features/note_cover/note_cover.dart';
 import 'device_identity_service.dart';
 
 final bubbleDocumentStoreProvider = Provider<BubbleDocumentStore>(
@@ -51,6 +53,9 @@ class BubbleDocumentCodec {
       'createdAt': bubble.createdAt.millisecondsSinceEpoch,
       'updatedAt': bubble.updatedAt.millisecondsSinceEpoch,
       'appearanceFrequency': bubble.appearanceFrequency,
+      'noteProfile': bubble.profile?.toJson(),
+      if (bubble.cover != null) 'cover': bubble.cover!.toJson(),
+      'recommendationState': bubble.recommendationState.toJson(),
       'updatedBy': updatedBy,
       'shownByDevice': {
         for (final entry in bubble.shownByDevice.entries)
@@ -104,12 +109,43 @@ class BubbleDocumentCodec {
     final bubble = Bubble(
       id: id,
       title: title,
+      cover: metadata['cover'] is Map
+          ? NoteCover.fromJson(
+              (metadata['cover'] as Map).cast<String, Object?>(),
+            )
+          : null,
       description: normalized.substring(bodyStart),
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAt.toInt()),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAt.toInt()),
       appearanceFrequency:
           (metadata['appearanceFrequency'] as num?)?.toInt().clamp(1, 5) ?? 3,
       shownByDevice: Map.unmodifiable(shownByDevice),
+      lastShownAt:
+          (metadata['recommendationState'] as Map?)?['last_shown'] is num
+          ? DateTime.fromMillisecondsSinceEpoch(
+              ((metadata['recommendationState'] as Map)['last_shown'] as num)
+                  .toInt(),
+            )
+          : null,
+      shownCount:
+          ((metadata['recommendationState'] as Map?)?['exposure_count'] as num?)
+              ?.toInt() ??
+          0,
+      profile: metadata['noteProfile'] is Map
+          ? NoteProfile.fromJson(
+              (metadata['noteProfile'] as Map).cast<String, Object?>(),
+            )
+          : null,
+      preference: boundedNumber(
+        (metadata['recommendationState'] as Map?)?['preference'],
+        0,
+        -.6,
+        .6,
+      ),
+      recommendationEnabled: ![
+        false,
+        0,
+      ].contains((metadata['recommendationState'] as Map?)?['enabled']),
     );
     return StoredBubbleDocument(
       bubble: bubble,
@@ -248,6 +284,46 @@ class BubbleDocumentStore {
       await file.readAsString(),
       expectedId: id,
     );
+  }
+
+  /// Attachments use the same object store as documents, so Dartloom/WebDAV
+  /// includes them in its ordinary incremental synchronization pipeline.
+  Future<String> storeAttachment(Uint8List bytes, String filename) async {
+    final extension = path.extension(filename).toLowerCase();
+    if (!const {
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp',
+      '.bmp',
+    }.contains(extension)) {
+      throw const FormatException('Unsupported image format');
+    }
+    final digest = sha256.convert(bytes).toString();
+    final key = 'assets/$digest$extension';
+    if (objectStore case final store?) {
+      await store.write(key, bytes);
+    } else {
+      final file = File(path.join(root.path, 'assets', '$digest$extension'));
+      await file.parent.create(recursive: true);
+      if (!await file.exists()) await file.writeAsBytes(bytes, flush: true);
+    }
+    notifyChanged();
+    return key;
+  }
+
+  Future<Uint8List?> readAttachment(String key) async {
+    if (!RegExp(
+      r'^assets/[0-9a-f]{64}\.(png|jpg|jpeg|gif|webp|bmp)$',
+    ).hasMatch(key)) {
+      return null;
+    }
+    if (objectStore case final store?) return store.read(key);
+    final file = File(
+      path.join(root.path, key.replaceAll('/', path.separator)),
+    );
+    return await file.exists() ? file.readAsBytes() : null;
   }
 
   Future<void> save(Bubble bubble) async {

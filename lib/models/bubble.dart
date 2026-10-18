@@ -1,3 +1,6 @@
+import '../features/recommendations/note_profile.dart';
+import '../features/note_cover/note_cover.dart';
+
 class BubbleShowStats {
   const BubbleShowStats({required this.count, this.lastShownAt});
 
@@ -29,6 +32,10 @@ class Bubble {
     required this.updatedAt,
     this.appearanceFrequency = 3,
     this.shownByDevice = const {},
+    this.profile,
+    this.cover,
+    this.preference = 0,
+    this.recommendationEnabled = true,
     DateTime? lastShownAt,
     int shownCount = 0,
     this.deletedAt,
@@ -44,6 +51,29 @@ class Bubble {
   final DateTime updatedAt;
   final int appearanceFrequency;
   final Map<String, BubbleShowStats> shownByDevice;
+  final NoteProfile? profile;
+  final NoteCover? cover;
+  final double preference;
+  final bool recommendationEnabled;
+  RecommendationState get recommendationState => RecommendationState(
+    noteId: id,
+    preference: preference,
+    lastShown: lastShownAt,
+    exposureCount: shownCount,
+    enabled: recommendationEnabled,
+  );
+
+  NoteProfile get effectiveProfile =>
+      profile ??
+      NoteProfile(cueValue: (appearanceFrequency - 1) / 4, cueText: title);
+
+  String get cueTitle => effectiveProfile.cueText.trim().isEmpty
+      ? title
+      : effectiveProfile.cueText;
+
+  bool get showSummary =>
+      effectiveProfile.detailNeed >= .5 &&
+      effectiveProfile.summary.trim().isNotEmpty;
   final DateTime? _legacyLastShownAt;
   final int _legacyShownCount;
 
@@ -76,6 +106,10 @@ class Bubble {
     DateTime? updatedAt,
     int? appearanceFrequency,
     Map<String, BubbleShowStats>? shownByDevice,
+    NoteProfile? profile,
+    NoteCover? cover,
+    double? preference,
+    bool? recommendationEnabled,
     DateTime? lastShownAt,
     int? shownCount,
     DateTime? deletedAt,
@@ -88,6 +122,10 @@ class Bubble {
     updatedAt: updatedAt ?? this.updatedAt,
     appearanceFrequency: appearanceFrequency ?? this.appearanceFrequency,
     shownByDevice: shownByDevice ?? this.shownByDevice,
+    profile: profile ?? this.profile,
+    cover: cover ?? this.cover,
+    preference: preference ?? this.preference,
+    recommendationEnabled: recommendationEnabled ?? this.recommendationEnabled,
     lastShownAt: lastShownAt ?? this.lastShownAt,
     shownCount: shownCount ?? this.shownCount,
     deletedAt: deletedAt ?? this.deletedAt,
@@ -103,6 +141,10 @@ class Bubble {
     'last_shown_at': lastShownAt?.millisecondsSinceEpoch,
     'shown_count': shownCount,
     'appearance_frequency': appearanceFrequency,
+    'note_profile': profile?.toJson(),
+    'note_cover': cover?.toJson(),
+    'preference': preference,
+    'recommendation_enabled': recommendationEnabled,
     'deleted_at': deletedAt?.millisecondsSinceEpoch,
     'field_versions': fieldVersions.entries
         .map((entry) => '${entry.key}:${entry.value}')
@@ -113,6 +155,16 @@ class Bubble {
     id: map['id']! as String,
     title: map['title']! as String,
     description: map['description']! as String,
+    cover: map['note_cover'] is Map
+        ? NoteCover.fromJson((map['note_cover'] as Map).cast<String, Object?>())
+        : null,
+    profile: map['note_profile'] is Map
+        ? NoteProfile.fromJson(
+            (map['note_profile'] as Map).cast<String, Object?>(),
+          )
+        : null,
+    preference: boundedNumber(map['preference'], 0, -.6, .6),
+    recommendationEnabled: map['recommendation_enabled'] as bool? ?? true,
     createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']! as int),
     updatedAt: DateTime.fromMillisecondsSinceEpoch(
       (map['updated_at'] ?? map['created_at']) as int,
