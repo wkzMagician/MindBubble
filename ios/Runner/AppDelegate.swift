@@ -73,7 +73,9 @@ enum ReminderDeliveryLedger {
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MindBubbleReminder")
+    guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MindBubbleReminder") else {
+      return
+    }
     reminders = FlutterMethodChannel(name: "mindbubble/reminder", binaryMessenger: registrar.messenger())
     reminders?.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { result(FlutterMethodNotImplemented); return }

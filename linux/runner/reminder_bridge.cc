@@ -36,6 +36,9 @@ static void exit_app(GtkWidget*, gpointer) {
   if (main_widget) gtk_widget_destroy(main_widget);
 }
 
+// GTK 3's XEmbed tray API has no non-deprecated GTK replacement. Keep this
+// compatibility code isolated while retaining warnings for the rest of the app.
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 static void tray_popup(GtkStatusIcon* icon, guint button, guint time, gpointer) {
   GtkWidget* menu = gtk_menu_new();
   GtkWidget* show = gtk_menu_item_new_with_label("打开浮念");
@@ -63,6 +66,8 @@ static void set_tray(gboolean enabled) {
     tray_icon = nullptr;
   }
 }
+
+G_GNUC_END_IGNORE_DEPRECATIONS
 
 static gboolean popup_timeout(gpointer) {
   floating_timer_id = 0;
@@ -145,8 +150,14 @@ static void show_overlay(FlValue* args) {
   g_signal_connect(button, "clicked", G_CALLBACK(open_bubble), nullptr);
 
   GdkRectangle area{};
-  gdk_screen_get_monitor_workarea(
-      screen, gdk_screen_get_primary_monitor(screen), &area);
+  GdkDisplay* display = gtk_widget_get_display(floating_widget);
+  GdkMonitor* monitor = gdk_display_get_primary_monitor(display);
+  if (!monitor) monitor = gdk_display_get_monitor(display, 0);
+  if (monitor) {
+    gdk_monitor_get_workarea(monitor, &area);
+  } else {
+    area = {0, 0, width + 28, height + 28};
+  }
   const gint x = g_str_has_suffix(corner, "Right")
       ? area.x + area.width - width - 14 : area.x + 14;
   const gint y = g_str_has_prefix(corner, "bottom")
