@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
+import 'features/model_settings/model_settings.dart';
+import 'features/recommendations/recommendation_config.dart';
 import 'app/app_composition_native.dart';
 import 'services/bubble_document_store.dart';
 import 'services/daily_selection_cache.dart';
@@ -20,9 +22,16 @@ Future<void> main() async {
 Future<Widget> _initializeApp() async {
   try {
     final services = await createApplicationServices();
+    final recommendationConfig = await RecommendationConfig.load();
 
     return ProviderScope(
       overrides: [
+        recommendationConfigProvider.overrideWith(
+          (ref) =>
+              RecommendationConfigController(initial: recommendationConfig),
+        ),
+        modelSettingsStoreProvider.overrideWithValue(services.modelSettings),
+        modelSecretsStoreProvider.overrideWithValue(services.secrets),
         deviceIdentityProvider.overrideWithValue(services.identity),
         bubbleDocumentStoreProvider.overrideWithValue(services.documents),
         dailySelectionCacheProvider.overrideWithValue(services.dailyCache),

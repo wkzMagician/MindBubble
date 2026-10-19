@@ -9,7 +9,16 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    (NSApp.delegate as? AppDelegate)?.installReminderChannel(flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
+  }
+
+  override func performClose(_ sender: Any?) {
+    if (NSApp.delegate as? AppDelegate)?.shouldHideOnClose() == true {
+      orderOut(sender)
+    } else {
+      super.performClose(sender)
+    }
   }
 }

@@ -214,6 +214,82 @@ os._exit(91)
         leftovers = list(Path(self.temporary.name).rglob("*.mbj-tmp"))
         self.assertEqual([], leftovers)
 
+    def test_source_import_advances_checkpoint_and_updates_stable_ids(self):
+        first = self.service.import_bubbles(
+            {
+                "operationId": "notion-batch-1",
+                "source": {"id": "notion", "nextCursor": "cursor-1"},
+                "items": [
+                    {
+                        "id": "page-1",
+                        "title": "Original",
+                        "description": "First version",
+                        "updatedAt": "2026-08-28T00:00:00Z",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(1, len(first["imported"]))
+        self.assertEqual(
+            {"sourceId": "notion", "cursor": "cursor-1"},
+            self.service.get_import_checkpoint({"sourceId": "notion"}),
+        )
+
+        second = self.service.import_bubbles(
+            {
+                "operationId": "notion-batch-2",
+                "source": {
+                    "id": "notion",
+                    "cursor": "cursor-1",
+                    "nextCursor": "cursor-2",
+                },
+                "items": [
+                    {
+                        "id": "page-1",
+                        "title": "Updated",
+                        "description": "Second version",
+                        "updatedAt": "2026-08-28T01:00:00Z",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(1, len(second["imported"]))
+        self.assertEqual("Updated", self.service.get_bubble({"id": "page-1"})["bubble"]["title"])
+        self.assertEqual(
+            "cursor-2",
+            self.service.get_import_checkpoint({"sourceId": "notion"})["cursor"],
+        )
+
+        with self.assertRaisesRegex(mcp.JournalConflictError, "stale import cursor"):
+            self.service.import_bubbles(
+                {
+                    "operationId": "notion-stale",
+                    "source": {
+                        "id": "notion",
+                        "cursor": "cursor-1",
+                        "nextCursor": "cursor-3",
+                    },
+                    "items": [],
+                }
+            )
+
+        empty = self.service.import_bubbles(
+            {
+                "operationId": "notion-empty",
+                "source": {
+                    "id": "notion",
+                    "cursor": "cursor-2",
+                    "nextCursor": "cursor-3",
+                },
+                "items": [],
+            }
+        )
+        self.assertEqual([], empty["imported"])
+        self.assertEqual(
+            "cursor-3",
+            self.service.get_import_checkpoint({"sourceId": "notion"})["cursor"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

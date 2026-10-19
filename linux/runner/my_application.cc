@@ -1,4 +1,5 @@
 #include "my_application.h"
+#include "reminder_bridge.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -85,6 +86,8 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  install_reminder_bridge(view, GTK_WIDGET(window));
+  g_signal_connect(window, "delete-event", G_CALLBACK(reminder_window_delete), nullptr);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

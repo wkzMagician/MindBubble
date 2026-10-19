@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'sync_status_overlay.dart';
+
 import '../features/ocean/ocean_page.dart';
+import '../repositories/bubble_repository.dart';
+import '../services/reminder_runtime.dart';
+import '../services/reminder_settings.dart';
+import '../features/recommendations/note_detail.dart';
+import '../features/recommendations/note_profile.dart';
+import '../features/recommendations/recommendation_config.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/l10n.dart';
 import '../services/locale_service.dart';
 import '../services/sync_service.dart';
+import '../services/visual_theme_service.dart';
 
 class StartupBootstrap extends StatelessWidget {
   const StartupBootstrap({super.key, required this.initialize});
@@ -78,33 +86,99 @@ class StartupFailureApp extends StatelessWidget {
   );
 }
 
-class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
-  late Future<void> _initialSync;
+class _MindBubbleAppState extends ConsumerState<MindBubbleApp>
+    with WidgetsBindingObserver {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  bool _launchHandled = false;
 
   @override
   void initState() {
     super.initState();
-    _initialSync = _initializeSyncFacade();
+    WidgetsBinding.instance.addObserver(this);
+    ref.read(reminderPlatformProvider).onOpen = _showReminderBubble;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await ref.read(reminderRuntimeProvider).reconcileDeliveries();
+      if (!mounted) return;
+      await _updateReminders();
+      final id = await ref.read(reminderPlatformProvider).consumeLaunchBubble();
+      if (id != null && !_launchHandled) {
+        _launchHandled = true;
+        _showReminderBubble(id);
+      }
+    });
   }
 
-  // Dartloom owns startup, resume, connectivity, polling, retry, and
-  // local-write triggers. The app only performs compatibility migrations and
-  // exposes the configured profile to the existing UI.
-  Future<void> _initializeSyncFacade() async {
-    final sync = ref.read(syncServiceProvider);
-    final config = await sync.loadConfig();
-    if (config != null) await sync.syncNow();
+  @override
+  void dispose() {
+    ref.read(reminderPlatformProvider).onOpen = null;
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refill OS notification queue without resetting desktop timer cadence.
+      ref.read(reminderRuntimeProvider).refreshMobileSchedule();
+    }
+  }
+
+  Future<void> _updateReminders() async {
+    if (!mounted) return;
+    await ref
+        .read(reminderRuntimeProvider)
+        .configure(
+          ref.read(reminderSettingsProvider),
+          redNote: ref.read(visualThemeProvider) == VisualTheme.redNote,
+        );
+  }
+
+  Future<void> _showReminderBubble(String bubbleId) async {
+    // This is deliberately separate from homeRefreshVersionProvider.
+    if (!mounted) return;
+    final bubble = await ref.read(bubbleRepositoryProvider).getById(bubbleId);
+    if (bubble == null || !mounted) return;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showReminderBubble(bubbleId),
+      );
+      return;
+    }
+    await showNoteDetail(
+      context: navigator.context,
+      ref: ref,
+      channel: RecommendationChannel.notification,
+      bubble: bubble,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(reminderSettingsProvider, (_, __) => _updateReminders());
+    ref.listen(recommendationConfigProvider, (_, __) => _updateReminders());
+    ref.listen(visualThemeProvider, (_, __) => _updateReminders());
+    ref.listen(bubbleRevisionProvider, (_, __) => _updateReminders());
+    ref.listen(syncSnapshotProvider, (previous, next) {
+      final snapshot = next.valueOrNull;
+      final report = snapshot?.lastReport;
+      if (snapshot != null &&
+          snapshot.localRevision != previous?.valueOrNull?.localRevision &&
+          report != null &&
+          report.downloaded + report.deletedLocally > 0) {
+        ref.read(bubbleRevisionProvider.notifier).state++;
+      }
+    });
     final locale = ref.watch(localeControllerProvider);
+    final redNote = ref.watch(visualThemeProvider) == VisualTheme.redNote;
     final colors = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF2E7F91),
-      brightness: Brightness.dark,
-      surface: const Color(0xFF0B2531),
+      seedColor: redNote ? RedNoteColors.accent : const Color(0xFF2E7F91),
+      brightness: redNote ? Brightness.light : Brightness.dark,
+      surface: redNote ? RedNoteColors.surface : const Color(0xFF0B2531),
     );
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -117,7 +191,9 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: colors,
-        scaffoldBackgroundColor: const Color(0xFF061620),
+        scaffoldBackgroundColor: redNote
+            ? RedNoteColors.background
+            : const Color(0xFF061620),
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
           centerTitle: false,
@@ -126,22 +202,27 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
           surfaceTintColor: Colors.transparent,
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: const Color(0xFF0B2733),
+          backgroundColor: redNote
+              ? RedNoteColors.surface
+              : const Color(0xFF0B2733),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(redNote ? 16 : 24),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: const Color(0xFF123542),
+          fillColor: redNote ? RedNoteColors.field : const Color(0xFF123542),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFF65D7CB), width: 1.5),
+            borderSide: BorderSide(
+              color: redNote ? RedNoteColors.accent : const Color(0xFF65D7CB),
+              width: 1.5,
+            ),
           ),
         ),
         filledButtonTheme: FilledButtonThemeData(
@@ -152,78 +233,7 @@ class _MindBubbleAppState extends ConsumerState<MindBubbleApp> {
           ),
         ),
       ),
-      home: FutureBuilder<void>(
-        future: _initialSync,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const _SyncBootstrapPage();
-          }
-          return _BootstrapResult(
-            error: snapshot.error,
-            onRetry: () {
-              setState(() => _initialSync = _initializeSyncFacade());
-            },
-          );
-        },
-      ),
+      home: const SyncStatusOverlay(child: OceanPage()),
     );
   }
-}
-
-class _SyncBootstrapPage extends StatelessWidget {
-  const _SyncBootstrapPage();
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 18),
-          Text(context.l10n.initialSync),
-        ],
-      ),
-    ),
-  );
-}
-
-class _BootstrapResult extends StatelessWidget {
-  const _BootstrapResult({required this.error, required this.onRetry});
-
-  final Object? error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      const OceanPage(),
-      if (error != null)
-        SafeArea(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: Card(
-              margin: const EdgeInsets.all(16),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.cloud_off_outlined),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(context.l10n.initialSyncFailed('$error')),
-                    ),
-                    TextButton(
-                      onPressed: onRetry,
-                      child: Text(context.l10n.retry),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-    ],
-  );
 }

@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:dartloom_sync/dartloom_sync.dart' as dartloom;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,12 +10,21 @@ import '../../l10n/l10n.dart';
 import '../../repositories/bubble_repository.dart';
 import '../../services/bubble_document_store.dart';
 import '../../services/startup_service.dart';
-import '../../services/import_service.dart';
 import '../../services/locale_service.dart';
 import '../../services/sync_service.dart';
 import '../../viewmodels/bubble_view_models.dart';
-import '../../widgets/bubble_detail_dialog.dart';
 import '../../widgets/markdown_block_editor.dart';
+import '../note_cover/note_cover.dart';
+import '../note_cover/note_cover_editor.dart';
+import '../../services/visual_theme_service.dart';
+import 'import_wizard.dart';
+import 'home_bubble_count_setting.dart';
+import 'reminder_settings_panel.dart';
+import '../model_settings/model_settings_panel.dart';
+import '../recommendations/recommendation_settings_panel.dart';
+import '../recommendations/note_detail.dart';
+import '../recommendations/note_profile.dart';
+import '../recommendations/analyze_pending_notes_button.dart';
 
 class BubbleListPage extends ConsumerStatefulWidget {
   const BubbleListPage({super.key});
@@ -34,7 +42,7 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
   Widget build(BuildContext context) {
     final bubbles = ref.watch(bubblesProvider(_query));
     return Scaffold(
-      backgroundColor: const Color(0xFF061620),
+      backgroundColor: context.appBackground,
       appBar: AppBar(
         title: Text(context.l10n.appTitle),
         backgroundColor: Colors.transparent,
@@ -48,33 +56,50 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
           IconButton(
             tooltip: context.l10n.importFile,
             icon: const Icon(Icons.file_upload_outlined),
-            onPressed: _importFile,
+            onPressed: _openImportWizard,
           ),
+          const AnalyzePendingNotesButton(),
         ],
       ),
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF061620), Color(0xFF0B2834)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+        decoration: BoxDecoration(
+          color: context.isRedNote ? context.appBackground : null,
+          gradient: context.isRedNote
+              ? null
+              : const LinearGradient(
+                  colors: [Color(0xFF061620), Color(0xFF0B2834)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
         ),
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-              child: SearchBar(
-                elevation: const WidgetStatePropertyAll(0),
-                backgroundColor: const WidgetStatePropertyAll(
-                  Color(0xFF123442),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: context.isRedNote ? 980 : double.infinity,
+                  ),
+                  child: SearchBar(
+                    elevation: const WidgetStatePropertyAll(0),
+                    backgroundColor: WidgetStatePropertyAll(
+                      context.isRedNote
+                          ? RedNoteColors.surface
+                          : context.appField,
+                    ),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(
+                        color: context.isRedNote
+                            ? RedNoteColors.border
+                            : Colors.white.withValues(alpha: .1),
+                      ),
+                    ),
+                    leading: const Icon(Icons.search),
+                    hintText: context.l10n.searchHint,
+                    onChanged: (value) => setState(() => _query = value),
+                  ),
                 ),
-                side: WidgetStatePropertyAll(
-                  BorderSide(color: Colors.white.withValues(alpha: .1)),
-                ),
-                leading: const Icon(Icons.search),
-                hintText: context.l10n.searchHint,
-                onChanged: (value) => setState(() => _query = value),
               ),
             ),
             Expanded(
@@ -88,13 +113,23 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, index) => _BubbleTile(
-                          bubble: items[index],
-                          colorIndex: index,
-                          onOpen: () => _openDetail(items[index]),
-                          onEdit: () =>
-                              _openEditor(context, bubble: items[index]),
-                          onDelete: () => _delete(items[index]),
+                        itemBuilder: (_, index) => Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: context.isRedNote
+                                  ? 980
+                                  : double.infinity,
+                            ),
+                            child: _BubbleTile(
+                              bubble: items[index],
+                              colorIndex: index,
+                              onOpen: () => _openDetail(items[index]),
+                              onEdit: () =>
+                                  _openEditor(context, bubble: items[index]),
+                              onDelete: () => _delete(items[index]),
+                            ),
+                          ),
                         ),
                       ),
               ),
@@ -147,67 +182,33 @@ class _BubbleListPageState extends ConsumerState<BubbleListPage> {
     builder: (_) => const _SettingsDialog(),
   );
 
-  Future<void> _importFile() async {
-    // The full mapping pipeline is intentionally independent of the view;
-    // this compact first-run flow recognizes title/description headers.
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['csv', 'xlsx'],
+  Future<void> _openImportWizard() async {
+    final imported = await showDialog<int>(
+      context: context,
+      builder: (_) => const ImportWizard(),
     );
-    if (result == null || result.files.single.path == null) return;
-    final rows = await ImportService().readTable(
-      File(result.files.single.path!),
-    );
-    var imported = 0;
-    final existing = (await ref.read(bubbleRepositoryProvider).getAll())
-        .map((b) => b.title.toLowerCase())
-        .toSet();
-    for (final row in rows) {
-      final title = row.values['title'] ?? row.values['标题'] ?? '';
-      final description =
-          row.values['description'] ??
-          row.values['正文'] ??
-          row.values['描述'] ??
-          '';
-      if (title.trim().isEmpty ||
-          description.trim().isEmpty ||
-          !existing.add(title.trim().toLowerCase())) {
-        continue;
+    if (imported != null) {
+      _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导入完成：$imported 条新增或更新的笔记')));
       }
-      await ref
-          .read(bubbleRepositoryProvider)
-          .save(
-            Bubble(
-              id: _newBubbleId(),
-              title: title.trim(),
-              description: description.trim(),
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-          );
-      imported++;
-    }
-    _refresh();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.importedCount(imported))),
-      );
     }
   }
 
   Future<void> _openDetail(Bubble bubble) async {
-    final changed = await showDialog<bool>(
+    await showNoteDetail(
       context: context,
-      builder: (_) => BubbleDetailDialog(
-        bubble: bubble,
-        onFrequencyChanged: (frequency) => ref
-            .read(bubbleRepositoryProvider)
-            .updateFrequency(bubble.id, frequency),
-        onEdit: () => _openEditor(context, bubble: bubble),
-        onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
-      ),
+      ref: ref,
+      channel: _query.trim().isEmpty
+          ? RecommendationChannel.library
+          : RecommendationChannel.search,
+      bubble: bubble,
+      onEdit: () => _openEditor(context, bubble: bubble),
+      onDelete: () => ref.read(bubbleRepositoryProvider).delete(bubble.id),
     );
-    if (changed == true) _refresh();
+    _refresh();
   }
 }
 
@@ -227,8 +228,6 @@ class _EmptyState extends StatelessWidget {
             context.l10n.emptyTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(height: 8),
-          Text(context.l10n.emptyBody),
         ],
       ),
     ),
@@ -261,135 +260,164 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     final snapshot = ref.watch(syncSnapshotProvider).value;
     final conflicts = ref.watch(syncConflictsProvider).value ?? const [];
     final sync = ref.read(syncServiceProvider);
+    final lastSyncedAt = snapshot?.lastSuccessAt ?? sync.lastSyncedAt;
     final documentIssues = ref.read(bubbleDocumentStoreProvider).issues;
     return AlertDialog(
       title: Text(context.l10n.settings),
       content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.cloud_sync_outlined),
-              title: Text(context.l10n.cloudSync),
-              subtitle: Text(
-                _syncError ??
-                    ((snapshot?.lastSuccessAt ?? sync.lastSyncedAt) == null
-                        ? context.l10n.cloudSyncSubtitle
-                        : context.l10n.lastSynced(
-                            (snapshot?.lastSuccessAt ?? sync.lastSyncedAt)!
-                                .toLocal()
-                                .toString(),
-                          )),
-                style: _syncError == null
+        width: 440,
+        height: min(640, MediaQuery.sizeOf(context).height * 0.70),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.cloud_sync_outlined),
+                title: Text(context.l10n.cloudSync),
+                subtitle: _syncError == null && lastSyncedAt == null
                     ? null
-                    : TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (sync.isConfigured)
-                    IconButton(
-                      tooltip: context.l10n.syncNow,
-                      onPressed: _syncing ? null : _syncNow,
-                      icon: _syncing
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync),
-                    ),
-                  const Icon(Icons.chevron_right),
-                ],
-              ),
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => const _SyncDialog(),
-              ),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.folder_outlined),
-              title: Text(context.l10n.openDocumentFolder),
-              subtitle: Text(ref.read(bubbleDocumentStoreProvider).root.path),
-              onTap: _openDocumentFolder,
-            ),
-            if (documentIssues.isNotEmpty)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.description_outlined,
-                  color: Theme.of(context).colorScheme.error,
+                    : Text(
+                        _syncError ??
+                            context.l10n.lastSynced(
+                              lastSyncedAt!.toLocal().toString(),
+                            ),
+                        style: _syncError == null
+                            ? null
+                            : TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                      ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (sync.isConfigured)
+                      IconButton(
+                        tooltip: context.l10n.syncNow,
+                        onPressed: _syncing ? null : _syncNow,
+                        icon: _syncing
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.sync),
+                      ),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
-                title: Text(
-                  context.l10n.invalidDocuments(documentIssues.length),
-                ),
-                subtitle: Text(documentIssues.first.message),
-              ),
-            if (conflicts.isNotEmpty)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.warning_amber_rounded,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                title: Text(context.l10n.syncConflicts(conflicts.length)),
-                subtitle: Text(context.l10n.syncConflictsSubtitle),
-                trailing: const Icon(Icons.chevron_right),
                 onTap: () => showDialog<void>(
                   context: context,
-                  builder: (_) => const _ConflictDialog(),
+                  builder: (_) => const _SyncDialog(),
                 ),
               ),
-            const Divider(),
-            DropdownButtonFormField<String>(
-              initialValue:
-                  ref.watch(localeControllerProvider)?.languageCode ?? 'system',
-              decoration: InputDecoration(
-                labelText: context.l10n.language,
-                prefixIcon: const Icon(Icons.language),
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: 'system',
-                  child: Text(context.l10n.followSystem),
-                ),
-                DropdownMenuItem(
-                  value: 'zh',
-                  child: Text(context.l10n.chinese),
-                ),
-                DropdownMenuItem(
-                  value: 'en',
-                  child: Text(context.l10n.english),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(localeControllerProvider.notifier)
-                      .setPreference(value);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            if (!ref.read(startupServiceProvider).isSupported)
-              Text(context.l10n.unsupportedStartup)
-            else if (_enabled == null)
-              const Center(child: CircularProgressIndicator())
-            else
-              SwitchListTile(
+              ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(context.l10n.launchAtStartup),
-                subtitle: Text(
-                  context.l10n.startupPlatformDescription(
-                    ref.read(startupServiceProvider).platformLabel,
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(context.l10n.openDocumentFolder),
+                subtitle: Text(ref.read(bubbleDocumentStoreProvider).root.path),
+                onTap: _openDocumentFolder,
+              ),
+              if (documentIssues.isNotEmpty)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.description_outlined,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    context.l10n.invalidDocuments(documentIssues.length),
+                  ),
+                  subtitle: Text(documentIssues.first.message),
+                ),
+              if (conflicts.isNotEmpty)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.warning_amber_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(context.l10n.syncConflicts(conflicts.length)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => const _ConflictDialog(),
                   ),
                 ),
-                value: _enabled!,
-                onChanged: _saving ? null : _setStartupEnabled,
+              const Divider(),
+              DropdownButtonFormField<String>(
+                initialValue:
+                    ref.watch(localeControllerProvider)?.languageCode ??
+                    'system',
+                decoration: InputDecoration(
+                  labelText: context.l10n.language,
+                  prefixIcon: const Icon(Icons.language),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'system',
+                    child: Text(context.l10n.followSystem),
+                  ),
+                  DropdownMenuItem(
+                    value: 'zh',
+                    child: Text(context.l10n.chinese),
+                  ),
+                  DropdownMenuItem(
+                    value: 'en',
+                    child: Text(context.l10n.english),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    ref
+                        .read(localeControllerProvider.notifier)
+                        .setPreference(value);
+                  }
+                },
               ),
-          ],
+              const SizedBox(height: 12),
+              DropdownButtonFormField<VisualTheme>(
+                initialValue: ref.watch(visualThemeProvider),
+                decoration: const InputDecoration(
+                  labelText: '外观主题',
+                  prefixIcon: Icon(Icons.palette_outlined),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: VisualTheme.ocean,
+                    child: Text('Ocean · 海洋'),
+                  ),
+                  DropdownMenuItem(
+                    value: VisualTheme.redNote,
+                    child: Text('小红书 · 灵感卡片'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    ref.read(visualThemeProvider.notifier).setTheme(value);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              const HomeBubbleCountSetting(),
+              const ModelSettingsPanel(),
+              const RecommendationSettingsPanel(),
+              const ReminderSettingsPanel(),
+              const SizedBox(height: 12),
+              if (!ref.read(startupServiceProvider).isSupported)
+                Text(context.l10n.unsupportedStartup)
+              else if (_enabled == null)
+                const Center(child: CircularProgressIndicator())
+              else
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(context.l10n.launchAtStartup),
+                  value: _enabled!,
+                  onChanged: _saving ? null : _setStartupEnabled,
+                ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -606,8 +634,6 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(context.l10n.syncInstructions),
-                  const SizedBox(height: 16),
                   TextField(
                     controller: _server,
                     decoration: InputDecoration(
@@ -634,9 +660,6 @@ class _SyncDialogState extends ConsumerState<_SyncDialog> {
                     },
                     decoration: InputDecoration(
                       labelText: context.l10n.appPassword,
-                      helperText: _hasStoredPassword
-                          ? context.l10n.storedPasswordHint
-                          : null,
                     ),
                   ),
                   if (_error != null) ...[
@@ -716,12 +739,88 @@ class _BubbleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.isRedNote) {
+      return Material(
+        color: RedNoteColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: RedNoteColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
+            child: Row(
+              children: [
+                Container(
+                  height: 44,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    color: RedNoteColors.field,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.notes_rounded,
+                    size: 21,
+                    color: RedNoteColors.secondary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        bubble.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: RedNoteColors.text,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        bubble.description.replaceAll(RegExp(r'\s+'), ' '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: RedNoteColors.secondary,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: context.l10n.edit,
+                  onPressed: onEdit,
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: RedNoteColors.secondary,
+                    size: 19,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final accent = _accents[colorIndex % _accents.length];
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
-          colors: [accent.withValues(alpha: .2), const Color(0xFF102A36)],
+          colors: [
+            accent.withValues(alpha: .2),
+            context.isRedNote ? Colors.white : const Color(0xFF102A36),
+          ],
         ),
         border: Border.all(color: accent.withValues(alpha: .28)),
         boxShadow: const [
@@ -780,6 +879,8 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _title;
   late final TextEditingController _description;
+  late final String _noteId;
+  late NoteCover _cover;
   bool _saving = false;
   String? _descriptionError;
 
@@ -789,6 +890,8 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
     final bubble = widget.bubble;
     _title = TextEditingController(text: bubble?.title);
     _description = TextEditingController(text: bubble?.description);
+    _noteId = bubble?.id ?? _newBubbleId();
+    _cover = bubble?.cover ?? NoteCover.forNote(_noteId, _description.text);
   }
 
   @override
@@ -799,7 +902,22 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
+    final inherited = Theme.of(context);
+    return Theme(
+      data: ThemeData.light(useMaterial3: true).copyWith(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF204E47)),
+        textTheme: inherited.textTheme.apply(
+          bodyColor: const Color(0xFF253D3A),
+          displayColor: const Color(0xFF253D3A),
+        ),
+      ),
+      child: Builder(builder: _buildEditor),
+    );
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -809,19 +927,19 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
         height: min(screen.height - 36, 760),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFF071A25),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withValues(alpha: .12)),
+            color: const Color(0xFFF7F6F1),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFDCE3D7)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x99000000),
-                blurRadius: 46,
+                color: Color(0x33000000),
+                blurRadius: 32,
                 offset: Offset(0, 18),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(18),
             child: Form(
               key: _formKey,
               child: Column(
@@ -829,14 +947,10 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                 children: [
                   Container(
                     padding: const EdgeInsets.fromLTRB(26, 20, 18, 18),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF244DA9), Color(0xFF7648A9)],
-                      ),
-                    ),
+                    decoration: const BoxDecoration(color: Color(0xFFF7F6F1)),
                     child: Row(
                       children: [
-                        const Icon(Icons.edit_note, color: Colors.white),
+                        const Icon(Icons.edit_note, color: Color(0xFF253D3A)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -845,7 +959,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                                 : context.l10n.editBubble,
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
-                                  color: Colors.white,
+                                  color: const Color(0xFF253D3A),
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
@@ -855,7 +969,10 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                           onPressed: _saving
                               ? null
                               : () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.white),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Color(0xFF253D3A),
+                          ),
                         ),
                       ],
                     ),
@@ -864,7 +981,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                     padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF123846),
+                        color: context.appField,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: const Color(0xFF66D8CD).withValues(alpha: .32),
@@ -872,6 +989,7 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                       ),
                       child: TextFormField(
                         controller: _title,
+                        enabled: !_saving,
                         autofocus: true,
                         decoration: InputDecoration(
                           labelText: context.l10n.titleLabel,
@@ -893,20 +1011,42 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
-                      child: MarkdownBlockEditor(
-                        controller: _description,
-                        errorText: _descriptionError,
-                        onChanged: (_) {
-                          if (_descriptionError != null) {
-                            setState(() => _descriptionError = null);
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth >= 740) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: _bodyEditor()),
+                                const SizedBox(width: 20),
+                                SizedBox(
+                                  width: 286,
+                                  child: SingleChildScrollView(
+                                    child: _coverEditor(),
+                                  ),
+                                ),
+                              ],
+                            );
                           }
+                          return SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  height: max(240, constraints.maxHeight * .65),
+                                  child: _bodyEditor(),
+                                ),
+                                const SizedBox(height: 24),
+                                _coverEditor(),
+                              ],
+                            ),
+                          );
                         },
                       ),
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
-                    color: const Color(0xFF0B2733),
+                    color: context.appPanel,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -941,6 +1081,35 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? context.l10n.requiredField : null;
 
+  Widget _bodyEditor() => ExcludeFocus(
+    excluding: _saving,
+    child: AbsorbPointer(
+      absorbing: _saving,
+      child: MarkdownBlockEditor(
+        neutralColors: true,
+        controller: _description,
+        documentStore: ref.read(bubbleDocumentStoreProvider),
+        errorText: _descriptionError,
+        onChanged: (_) {
+          if (_descriptionError != null) {
+            setState(() => _descriptionError = null);
+          }
+        },
+      ),
+    ),
+  );
+
+  Widget _coverEditor() => NoteCoverEditor(
+    key: ValueKey(_noteId),
+    noteId: _noteId,
+    title: _title,
+    body: _description,
+    initialCover: _cover,
+    autoSelectFirstImage: widget.bubble?.cover == null,
+    enabled: !_saving,
+    onChanged: (value) => _cover = value,
+  );
+
   Future<void> _save() async {
     final titleIsValid = _formKey.currentState!.validate();
     final descriptionIsValid = _description.text.trim().isNotEmpty;
@@ -948,10 +1117,11 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
       setState(() => _descriptionError = context.l10n.descriptionRequired);
     }
     if (!titleIsValid || !descriptionIsValid) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _saving = true);
     final existing = widget.bubble;
     final bubble = Bubble(
-      id: existing?.id ?? _newBubbleId(),
+      id: _noteId,
       title: _title.text.trim(),
       description: _description.text.trim(),
       createdAt: existing?.createdAt ?? DateTime.now(),
@@ -960,9 +1130,22 @@ class _BubbleEditorState extends ConsumerState<BubbleEditorDialog> {
       updatedAt: DateTime.now(),
       appearanceFrequency: existing?.appearanceFrequency ?? 3,
       shownByDevice: existing?.shownByDevice ?? const {},
+      profile: existing?.profile,
+      preference: existing?.preference ?? 0,
+      recommendationEnabled: existing?.recommendationEnabled ?? true,
+      cover: _cover,
     );
-    await ref.read(bubbleRepositoryProvider).save(bubble);
-    if (mounted) Navigator.pop(context, true);
+    try {
+      await ref.read(bubbleRepositoryProvider).save(bubble);
+      if (mounted) Navigator.pop(context, true);
+    } on Object {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.noteSaveFailed)));
+      }
+    }
   }
 }
 

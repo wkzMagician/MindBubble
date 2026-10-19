@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -22,6 +23,8 @@ from typing import Mapping
 
 
 PROTOCOL_VERSION = 1
+IMPORT_FORMAT = "mind-bubble-import"
+IMPORT_SCHEMA_VERSION = 1
 DOCUMENT_ROOT_ENV = "MIND_BUBBLE_DIR"
 JOURNAL_ROOT_ENV = "MIND_BUBBLE_JOURNAL_DIR"
 _ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -95,6 +98,32 @@ def _validate_operation_id(value: object) -> str:
             "operationId is required and must be 1..200 safe ASCII characters"
         )
     return operation_id
+
+
+def _validate_source_id(value: object) -> str:
+    source_id = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,119}", source_id):
+        raise ValueError(
+            "sourceId must be 1..120 safe ASCII characters"
+        )
+    return source_id
+
+
+def _import_timestamp(value: object) -> int:
+    if value is None:
+        return int(time.time() * 1000)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            normalized = value.strip().replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return int(parsed.timestamp() * 1000)
+        except ValueError as error:
+            raise ValueError("updatedAt must be an ISO-8601 timestamp") from error
+    raise ValueError("updatedAt must be an ISO-8601 timestamp")
 
 
 def decode_document(file: Path) -> dict:
@@ -572,6 +601,7 @@ class MindBubbleService:
     def __init__(self, document_root: Path, journal_root: Path):
         self.root = document_root.resolve(strict=False)
         self.journal = SharedJournal(self.root, journal_root)
+        self.checkpoint_path = self.journal.journal_root / "import-checkpoints.json"
 
     def all_items(self) -> list[dict]:
         if not self.root.exists():
@@ -593,7 +623,7 @@ class MindBubbleService:
             )
         return sorted(rows, key=lambda item: int(item["updatedAt"]), reverse=True)
 
-    def import_bubbles(self, args):
+    def _import_bubbles_legacy(self, args):
         batch_operation_id = _validate_operation_id(args.get("operationId"))
         if len(batch_operation_id) > 180:
             raise ValueError("batch operationId must be at most 180 characters")
@@ -651,6 +681,179 @@ class MindBubbleService:
             existing_titles.add(stored["title"].casefold())
             imported.append({"id": stored["id"], "title": stored["title"]})
         return {"imported": imported, "skipped": skipped}
+
+    def _read_checkpoints_locked(self):
+        if not self.checkpoint_path.exists():
+            return {}
+        try:
+            value = json.loads(self.checkpoint_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise JournalCorruptionError("invalid import checkpoint file") from error
+        if not isinstance(value, dict):
+            raise JournalCorruptionError("invalid import checkpoint file")
+        return {
+            str(key): str(cursor)
+            for key, cursor in value.items()
+            if isinstance(key, str) and isinstance(cursor, str)
+        }
+
+    def _write_checkpoint(self, source_id, cursor):
+        with _CrossProcessLock(self.journal.lock_path):
+            checkpoints = self._read_checkpoints_locked()
+            checkpoints[source_id] = cursor
+            self.journal._atomic_write(
+                self.checkpoint_path,
+                (_canonical_json(checkpoints) + "\n").encode("utf-8"),
+            )
+
+    def get_import_checkpoint(self, args):
+        source_id = _validate_source_id(args.get("sourceId"))
+        with _CrossProcessLock(self.journal.lock_path):
+            cursor = self._read_checkpoints_locked().get(source_id)
+        return {"sourceId": source_id, "cursor": cursor}
+
+    # This implementation accepts the old title-only request while adding
+    # stable IDs, canonical source metadata, and cursor checkpoints.
+    def import_bubbles(self, args):
+        batch_operation_id = _validate_operation_id(args.get("operationId"))
+        if len(batch_operation_id) > 180:
+            raise ValueError("batch operationId must be at most 180 characters")
+        rows = args.get("items", [])
+        if not isinstance(rows, list):
+            raise ValueError("items must be an array")
+
+        source = args.get("source")
+        if source is not None:
+            if not isinstance(source, Mapping):
+                raise ValueError("source must be an object")
+            source_id = _validate_source_id(source.get("id"))
+            cursor = source.get("cursor")
+            next_cursor = source.get("nextCursor")
+        else:
+            source_id = (
+                _validate_source_id(args.get("sourceId"))
+                if args.get("sourceId") is not None
+                else None
+            )
+            cursor = args.get("cursor")
+            next_cursor = args.get("nextCursor")
+        if not rows and source_id is None:
+            raise ValueError("items must be a non-empty array")
+        for name, value in (("cursor", cursor), ("nextCursor", next_cursor)):
+            if value is not None and (
+                not isinstance(value, str) or not value.strip()
+            ):
+                raise ValueError(f"{name} must be a non-empty string")
+        if source_id is not None:
+            with _CrossProcessLock(self.journal.lock_path):
+                checkpoint = self._read_checkpoints_locked().get(source_id)
+            if checkpoint is not None and cursor != checkpoint:
+                raise JournalConflictError(
+                    f"stale import cursor for {source_id}: expected {checkpoint!r}"
+                )
+
+        existing_titles = {item["title"].casefold() for item in self.all_items()}
+        imported, skipped = [], []
+        for index, raw in enumerate(rows):
+            if not isinstance(raw, Mapping):
+                raise ValueError(f"items[{index}] must be an object")
+            operation_id = f"{batch_operation_id}/{index}"
+            title = str(raw.get("title", "")).strip()
+            description = str(raw.get("description", "")).strip()
+            if not title or not description:
+                raise ValueError("title and description are required")
+            frequency = int(raw.get("appearanceFrequency", 3))
+            if frequency not in range(1, 6):
+                raise ValueError("appearanceFrequency must be 1..5")
+            stable_id = raw.get("id")
+            if source_id is not None and stable_id is None:
+                raise ValueError(f"items[{index}].id is required for a source import")
+            ident = (
+                _validate_id(stable_id)
+                if stable_id is not None
+                else str(uuid.uuid5(uuid.NAMESPACE_URL, f"mindbubble:{operation_id}"))
+            )
+            request = {
+                "title": title,
+                "description": description,
+                "appearanceFrequency": frequency,
+            }
+            if stable_id is not None:
+                request["id"] = ident
+            if source_id is not None:
+                request["sourceId"] = source_id
+            if raw.get("updatedAt") is not None:
+                request["updatedAt"] = raw.get("updatedAt")
+
+            prepared = self.journal.operation(operation_id)
+            if prepared is not None:
+                replayed = self.journal.replay_result(
+                    operation_id=operation_id,
+                    object_id=ident,
+                    kind=prepared["intent"]["kind"],
+                    expected_content_hash=prepared["expectedContentHash"],
+                    request=request,
+                )
+                imported.append(replayed)
+                continue
+
+            file = self.root / f"{ident}.md"
+            current = decode_document(file) if file.exists() else None
+            # Stable source IDs are the identity boundary.  Title
+            # de-duplication only applies to legacy title-only imports.
+            if (
+                current is None
+                and stable_id is None
+                and args.get("deduplicateByTitle", True)
+                and title.casefold() in existing_titles
+            ):
+                skipped.append(title)
+                continue
+
+            updated_at = _import_timestamp(raw.get("updatedAt"))
+            if current is not None and updated_at <= int(current.get("updatedAt", 0)):
+                skipped.append(title)
+                continue
+            now = int(time.time() * 1000)
+            item = dict(current) if current is not None else {
+                "schemaVersion": 2,
+                "id": ident,
+                "createdAt": now,
+                "shownByDevice": {},
+            }
+            item.update(
+                {
+                    "title": title,
+                    "description": description,
+                    "updatedAt": updated_at,
+                    "appearanceFrequency": frequency,
+                    "updatedBy": "mcp",
+                }
+            )
+            encoded = encode_document(item).encode("utf-8")
+            result = public_item(item, content_hash=_sha256_bytes(encoded))
+            transaction = self.journal.mutate(
+                operation_id=operation_id,
+                object_id=ident,
+                kind="update" if current is not None else "create",
+                expected_content_hash=(
+                    _sha256_bytes(file.read_bytes()) if current is not None else None
+                ),
+                document=encoded,
+                request=request,
+                result=result,
+            )
+            stored = transaction["result"]
+            existing_titles.add(stored["title"].casefold())
+            imported.append(stored)
+
+        if source_id is not None and next_cursor is not None:
+            self._write_checkpoint(source_id, next_cursor)
+        response = {"imported": imported, "skipped": skipped}
+        if source_id is not None:
+            response["sourceId"] = source_id
+            response["cursor"] = next_cursor
+        return response
 
     def list_bubbles(self, args):
         limit = min(max(int(args.get("limit", 100)), 1), 500)
@@ -763,10 +966,27 @@ TOOLS = [
         "Batch import concepts as authorized create intents.",
         {
             "operationId": {"type": "string", "maxLength": 180},
-            "items": {"type": "array", "minItems": 1, "items": {"type": "object"}},
-            "deduplicateByTitle": {"type": "boolean"},
+        "items": {"type": "array", "items": {"type": "object"}},
+        "deduplicateByTitle": {"type": "boolean"},
+        "sourceId": {"type": "string", "maxLength": 120},
+        "cursor": {"type": "string"},
+        "nextCursor": {"type": "string"},
+        "source": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "maxLength": 120},
+                "cursor": {"type": "string"},
+                "nextCursor": {"type": "string"},
+            },
+        },
         },
         ["operationId", "items"],
+    ),
+    _tool(
+        "get_import_checkpoint",
+        "Get the last committed cursor for an external note source.",
+        {"sourceId": {"type": "string", "maxLength": 120}},
+        ["sourceId"],
     ),
     _tool("list_bubbles", "List concepts without creating intents.", {"limit": {"type": "integer"}}),
     _tool("search_bubbles", "Search concepts without creating intents.", {"query": {"type": "string"}}, ["query"]),
@@ -800,6 +1020,7 @@ TOOLS = [
 def serve(service: MindBubbleService, input_stream=sys.stdin, output_stream=sys.stdout):
     handlers = {
         "import_bubbles": service.import_bubbles,
+        "get_import_checkpoint": service.get_import_checkpoint,
         "list_bubbles": service.list_bubbles,
         "search_bubbles": service.search_bubbles,
         "get_bubble": service.get_bubble,

@@ -7,6 +7,16 @@ environment:
   sdk: '>=3.8.0 <4.0.0'
 
 dependencies:
+  dartloom_model:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      path: packages/dartloom_model
+  dartloom_model_io:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      path: packages/dartloom_model_io
   dartloom_autostart:
     git:
       url: https://github.com/wkzMagician/dartloom.git
@@ -96,8 +106,12 @@ dependencies:
     sdk: flutter
   csv: ^6.0.0
   crypto: ^3.0.6
+  characters: ^1.4.0
+  markdown: ^7.3.0
   excel: ^4.0.6
   file_picker: ^10.3.3
+  url_launcher: ^6.3.2
+  archive: ^3.6.1
   flutter_markdown_plus: ^1.0.12
   flutter_riverpod: ^2.6.1
   http: ^1.6.0
@@ -131,6 +145,11 @@ flutter_launcher_icons:
     generate: true
 
 dependency_overrides:
+  dartloom_model:
+    git:
+      url: https://github.com/wkzMagician/dartloom.git
+      ref: a3bf9898238dd3eab258e1726a40d52e7d0b77d2
+      path: packages/dartloom_model
   dartloom_autostart:
     git:
       url: https://github.com/wkzMagician/dartloom.git
