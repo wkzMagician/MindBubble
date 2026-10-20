@@ -59,8 +59,12 @@ jobs:
           fi
           apksigner="$(dirname "$aapt")/apksigner"
           "$apksigner" verify --verbose build/app/outputs/flutter-apk/app-release.apk
-          fingerprint=$("$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-          test "$fingerprint" = "$(tr -d '[:space:]' < .github/android-release-certificate.sha256)"
+          fingerprint=$("$apksigner" verify --print-certs-pem build/app/outputs/flutter-apk/app-release.apk | openssl x509 -outform DER | openssl dgst -sha256 | awk '{print $NF}')
+          expected=$(tr -d '[:space:]' < .github/android-release-certificate.sha256)
+          if [[ "$fingerprint" != "$expected" ]]; then
+            printf 'APK certificate mismatch: expected %s; found %s\n' "$expected" "$fingerprint" >&2
+            exit 1
+          fi
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/mind_bubble-${BUILD_NAME}-android.apk"
           cp build/app/outputs/bundle/release/app-release.aab "dist/mind_bubble-${BUILD_NAME}-android.aab"
