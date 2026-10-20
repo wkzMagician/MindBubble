@@ -46,6 +46,10 @@ app.*.map.json
 
 # Local SDK paths and generated platform configuration.
 /android/local.properties
+/android/key.properties
+*.jks
+*.keystore
+*.p12
 /macos/Flutter/ephemeral/
 /windows/flutter/ephemeral/
 
