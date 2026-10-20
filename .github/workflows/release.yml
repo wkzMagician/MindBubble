@@ -11,28 +11,69 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      build_name: ${{ steps.version.outputs.build_name }}
+      build_number: ${{ steps.version.outputs.build_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+      - name: Validate release version against all previous tags
+        id: version
+        run: dart tool/release_version.dart
+
   android:
+    needs: version
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.0'
+      - uses: ./.github/actions/android-signing
+        with:
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          store-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - run: flutter pub get
-      - run: flutter build apk --release
-      - run: flutter build appbundle --release
+      - run: flutter build apk --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+      - run: flutter build appbundle --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
       - name: Package Android
         shell: bash
         run: |
+          set -euo pipefail
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          metadata=$("$aapt" dump badging build/app/outputs/flutter-apk/app-release.apk)
+          if [[ "$metadata" != *"versionCode='$BUILD_NUMBER' versionName='$BUILD_NAME'"* ]]; then
+            echo "APK version does not match the validated release version" >&2
+            exit 1
+          fi
+          apksigner="$(dirname "$aapt")/apksigner"
+          "$apksigner" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          fingerprint=$("$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test "$fingerprint" = "$(tr -d '[:space:]' < .github/android-release-certificate.sha256)"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/mind_bubble-android.apk
-          cp build/app/outputs/bundle/release/app-release.aab dist/mind_bubble-android.aab
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/mind_bubble-${BUILD_NAME}-android.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/mind_bubble-${BUILD_NAME}-android.aab"
       - uses: actions/upload-artifact@v4
         with:
           name: android
           path: dist/*
 
   ios:
+    needs: version
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,19 +81,26 @@ jobs:
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
-      - run: flutter build ios --release --no-codesign
+      - run: flutter build ios --release --no-codesign --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
       - name: Package iOS IPA
         shell: bash
         run: |
+          set -euo pipefail
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/ios/iphoneos/Runner.app/Info.plist)" = "$BUILD_NAME"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/ios/iphoneos/Runner.app/Info.plist)" = "$BUILD_NUMBER"
           mkdir -p dist Payload
           cp -R build/ios/iphoneos/Runner.app Payload/
-          zip -qr dist/mind_bubble-ios.ipa Payload
+          zip -qr "dist/mind_bubble-${BUILD_NAME}-ios.ipa" Payload
       - uses: actions/upload-artifact@v4
         with:
           name: ios
           path: dist/*
 
   windows:
+    needs: version
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,20 +109,26 @@ jobs:
           flutter-version: '3.47.0'
       - run: flutter pub get
       - run: choco install innosetup --no-progress -y
-      - run: flutter build windows --release
+      - run: flutter build windows --release --build-name="$env:BUILD_NAME" --build-number="$env:BUILD_NUMBER"
       - name: Package Windows installer
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)').Matches.Groups[1].Value
-          if (-not $version) { throw "pubspec.yaml version not found" }
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer\windows.iss
+          $fileVersion = (Get-Item build/windows/x64/runner/Release/mind_bubble.exe).VersionInfo
+          $actualVersion = @($fileVersion.FileMajorPart, $fileVersion.FileMinorPart, $fileVersion.FileBuildPart, $fileVersion.FilePrivatePart) -join '.'
+          if ($actualVersion -ne "$env:BUILD_NAME.$env:BUILD_NUMBER") { throw "Unexpected executable version: $actualVersion" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:BUILD_NAME" "/DMyAppBuildNumber=$env:BUILD_NUMBER" installer\windows.iss
+          if ($LASTEXITCODE -ne 0) { throw "Windows installer packaging failed" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: dist/*.exe
 
   macos:
+    needs: version
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,19 +136,26 @@ jobs:
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
-      - run: flutter build macos --release
+      - run: flutter build macos --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
       - name: Package macOS app
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
           app_path=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -type d | head -n 1)
-          ditto -c -k --keepParent "$app_path" dist/mind_bubble-macos.zip
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")" = "$BUILD_NAME"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Contents/Info.plist")" = "$BUILD_NUMBER"
+          ditto -c -k --keepParent "$app_path" "dist/mind_bubble-${BUILD_NAME}-macos.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: macos
           path: dist/*
 
   linux:
+    needs: version
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,12 +167,14 @@ jobs:
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
-      - run: flutter build linux --release
+      - run: flutter build linux --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
       - name: Package Linux bundle
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          tar -czf dist/mind_bubble-linux-x64.tar.gz -C build/linux/x64/release bundle
+          printf '{"version":"%s","build_number":%s,"commit":"%s"}\n' "$BUILD_NAME" "$BUILD_NUMBER" "$GITHUB_SHA" > build/linux/x64/release/bundle/release-version.json
+          tar -czf "dist/mind_bubble-${BUILD_NAME}-linux-x64.tar.gz" -C build/linux/x64/release bundle
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -133,6 +196,13 @@ jobs:
           find downloaded_artifacts -type f ! -name 'dartloom-build.json' ! -name '*.aab' -exec cp {} release_files/ \;
       - uses: softprops/action-gh-release@v2
         with:
+          body: |
+            Android 从 v0.4.9 起使用固定发布签名，所有平台统一使用 tag 对应的版本和递增构建号。
+
+            **旧版 Android 升级须知：** 旧 debug 签名安装包无法直接覆盖升级到新签名。请先导出或同步笔记并确认备份可恢复，再卸载旧版、安装新版。后续正式签名版本将沿用同一证书。
+
+            包含小红书主题、自适应推荐和 Android 系统通知。主题可在首页切换；周期性提醒需在设置中启用并授权。
           generate_release_notes: true
           overwrite_files: true
+          fail_on_unmatched_files: true
           files: release_files/*

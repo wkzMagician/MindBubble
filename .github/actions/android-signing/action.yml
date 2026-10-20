@@ -1,0 +1,48 @@
+name: Configure Android release signing
+description: Restore the fixed release key and verify its public certificate fingerprint.
+inputs:
+  keystore-base64:
+    description: Base64 encoded release keystore
+    required: true
+  store-password:
+    description: Keystore password
+    required: true
+  key-alias:
+    description: Release key alias
+    required: true
+  key-password:
+    description: Release key password
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore and verify release key
+      shell: bash
+      env:
+        KEYSTORE_BASE64: ${{ inputs.keystore-base64 }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ inputs.store-password }}
+        ANDROID_KEY_ALIAS: ${{ inputs.key-alias }}
+        ANDROID_KEY_PASSWORD: ${{ inputs.key-password }}
+      run: |
+        set -euo pipefail
+        for name in KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+          if [[ -z "${!name}" ]]; then
+            echo "Missing Android signing secret: $name" >&2
+            exit 1
+          fi
+        done
+        umask 077
+        keystore="$RUNNER_TEMP/mindbubble-release.p12"
+        printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+        fingerprint=$(keytool -exportcert -keystore "$keystore" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" | openssl dgst -sha256 | awk '{print $NF}')
+        expected=$(tr -d '[:space:]' < .github/android-release-certificate.sha256)
+        if [[ "$fingerprint" != "$expected" ]]; then
+          echo "Android signing certificate does not match the fixed release certificate" >&2
+          exit 1
+        fi
+        {
+          printf 'ANDROID_KEYSTORE_PATH=%s\n' "$keystore"
+          printf 'ANDROID_KEYSTORE_PASSWORD=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+          printf 'ANDROID_KEY_ALIAS=%s\n' "$ANDROID_KEY_ALIAS"
+          printf 'ANDROID_KEY_PASSWORD=%s\n' "$ANDROID_KEY_PASSWORD"
+        } >> "$GITHUB_ENV"
