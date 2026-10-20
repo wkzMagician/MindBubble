@@ -15,17 +15,48 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       platforms: ${{ steps.set-matrix.outputs.platforms }}
+      build_name: ${{ steps.version.outputs.build_name }}
+      build_number: ${{ steps.version.outputs.build_number }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+      - name: Validate build version
+        id: version
+        env:
+          RELEASE_REF: ${{ inputs.git_ref }}
+        run: dart tool/release_version.dart
       - id: set-matrix
+        env:
+          REQUESTED_PLATFORM: ${{ inputs.platform }}
+          REQUESTED_MODE: ${{ inputs.mode }}
         run: |
-          if [ "${{ inputs.platform }}" = "all" ]; then
-            echo 'platforms=["windows","linux","macos","android","ios","web"]' >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          case "$REQUESTED_PLATFORM" in
+            all|windows|linux|macos|android|ios) ;;
+            *) echo "Unsupported platform: $REQUESTED_PLATFORM" >&2; exit 1 ;;
+          esac
+          case "$REQUESTED_MODE" in
+            release|debug|profile) ;;
+            *) echo "Unsupported build mode: $REQUESTED_MODE" >&2; exit 1 ;;
+          esac
+          if [ "$REQUESTED_PLATFORM" = "all" ]; then
+            echo 'platforms=["windows","linux","macos","android","ios"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'platforms=["${{ inputs.platform }}"]' >> "$GITHUB_OUTPUT"
+            printf 'platforms=["%s"]\n' "$REQUESTED_PLATFORM" >> "$GITHUB_OUTPUT"
           fi
 
   build:
     needs: matrix
+    env:
+      BUILD_NAME: ${{ needs.matrix.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.matrix.outputs.build_number }}
+      BUILD_MODE: ${{ inputs.mode }}
+      BUILD_PLATFORM: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,25 +75,34 @@ jobs:
         with:
           flutter-version: '3.47.0'
       - run: flutter pub get
+      - uses: ./.github/actions/android-signing
+        if: ${{ matrix.platform == 'android' && inputs.mode == 'release' }}
+        with:
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          store-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - name: Install Windows packaging tools
         if: ${{ matrix.platform == 'windows' }}
         run: choco install innosetup --no-progress -y
       - name: Build platform
         shell: bash
         run: |
-          case "${{ matrix.platform }}" in
-            android) flutter build apk --${{ inputs.mode }} && flutter build appbundle --${{ inputs.mode }} ;;
-            ios) flutter build ios --${{ inputs.mode }} --no-codesign ;;
-            *) flutter build ${{ matrix.platform }} --${{ inputs.mode }} ;;
+          set -euo pipefail
+          version_args=("--build-name=$BUILD_NAME" "--build-number=$BUILD_NUMBER")
+          case "$BUILD_PLATFORM" in
+            android) flutter build apk --"$BUILD_MODE" "${version_args[@]}" && flutter build appbundle --"$BUILD_MODE" "${version_args[@]}" ;;
+            ios) flutter build ios --"$BUILD_MODE" --no-codesign "${version_args[@]}" ;;
+            *) flutter build "$BUILD_PLATFORM" --"$BUILD_MODE" "${version_args[@]}" ;;
           esac
       - name: Package artifact
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifact
-          app='mind_bubble'
-          mode='${{ inputs.mode }}'
-          case "${{ matrix.platform }}" in
+          app="mind_bubble-${BUILD_NAME}"
+          mode="$BUILD_MODE"
+          case "$BUILD_PLATFORM" in
             android)
               cp "build/app/outputs/flutter-apk/app-$mode.apk" "artifact/${app}-android.apk"
               cp "build/app/outputs/bundle/$mode/app-$mode.aab" "artifact/${app}-android.aab"
@@ -77,16 +117,14 @@ jobs:
               ditto -c -k --keepParent "$app_path" "artifact/${app}-macos.zip"
               ;;
             windows)
-              powershell -NoProfile -Command '$version = (Select-String -Path pubspec.yaml -Pattern "^version:\s*([0-9]+\.[0-9]+\.[0-9]+)").Matches.Groups[1].Value; if (-not $version) { throw "pubspec.yaml version not found" }; & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer\windows.iss'
+              powershell -NoProfile -Command '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:BUILD_NAME" "/DMyAppBuildNumber=$env:BUILD_NUMBER" /Oartifact installer\windows.iss; exit $LASTEXITCODE'
               ;;
             linux)
+              printf '{"version":"%s","build_number":%s,"commit":"%s"}\n' "$BUILD_NAME" "$BUILD_NUMBER" "$(git rev-parse HEAD)" > "build/linux/x64/$mode/bundle/release-version.json"
               tar -czf "artifact/${app}-linux-x64.tar.gz" -C "build/linux/x64/$mode" bundle
               ;;
-            web)
-              (cd build/web && zip -qr "../../artifact/${app}-web.zip" .)
-              ;;
           esac
-          printf '{"schema_version":1,"platform":"%s","commit":"%s","files":[]}' "${{ matrix.platform }}" "${{ github.sha }}" > artifact/dartloom-build.json
+          printf '{"schema_version":1,"platform":"%s","commit":"%s","version":"%s","build_number":%s,"files":[]}' "$BUILD_PLATFORM" "$(git rev-parse HEAD)" "$BUILD_NAME" "$BUILD_NUMBER" > artifact/dartloom-build.json
       - uses: actions/upload-artifact@v4
         with:
           name: dartloom-${{ matrix.platform }}

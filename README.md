@@ -114,4 +114,12 @@ flutter build ios
 
 业务代码位于 `lib/features`，应用胶水和服务位于 `lib/app`、`lib/services`。项目通过普通 Dart / Flutter 包使用 Dartloom 的模型、存储、同步和单例能力；所选包与平台记录在 `.dartloom/project.yaml`。
 
+发行版本统一由 `pubspec.yaml` 的 `version: X.Y.Z+BUILD` 管理。创建新 tag 前，必须同时递增版本号和构建号，例如 `0.4.9+8` 对应 `v0.4.9`。构建号必须高于所有已有版本，包括历史 tag 中的构建号；工作流会在平台构建前校验，不允许省略构建号或回退版本。相同 tag 的重跑保留相同版本和构建号。
+
+Release 和 Dartloom Cloud Build 为 Android、iOS、Windows、macOS、Linux 显式传入相同的 `--build-name` 和 `--build-number`。Windows 安装器同时使用这组版本信息，发布附件文件名也包含版本号。版本约束逻辑位于 `tool/release_version.dart`。
+
+Android release 必须使用固定签名密钥。GitHub Actions 从 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 四个 Secrets 恢复签名配置，并检查证书指纹与 `.github/android-release-certificate.sha256` 一致。本地发行构建可通过同名环境变量（另设 `ANDROID_KEYSTORE_PATH`）或被 Git 忽略的 `android/key.properties` 配置密钥；缺少签名配置会阻止 release 构建。
+
+从旧 debug 签名版本迁移到正式签名版本时，Android 无法直接覆盖安装。请先导出或同步笔记，确认备份可用后再卸载旧版、安装新版。后续正式签名版本保持同一密钥并递增构建号。
+
 欢迎通过 Issue 或 Pull Request 反馈体验、改进平台适配和文档。
